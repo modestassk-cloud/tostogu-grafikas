@@ -24,6 +24,10 @@ Vidinė web platforma darbuotojų atostogų planavimui su vizualiu Ganto tipo ka
 - Automatinė kontrolė dėl pasirašyto prašymo:
   - jei iki patvirtintų atostogų liko ≤ 14 dienų ir prašymas negautas, įrašas pažymimas įspėjimu;
   - jei atostogų pradžia jau atėjo, bet prašymas negautas, įrašas rodomas kaip negalimas atostogauti.
+- El. laiškų pranešimai vadovui:
+  - kai pateikiamas naujas atostogų prašymas;
+  - kai iki patvirtintų atostogų lieka ≤ 14 dienų ir pasirašytas prašymas negautas.
+  - el. laiške pateikiama tiesioginė nuoroda į konkretų prašymą.
 - Duomenys saugomi `SQLite`, todėl po perkrovimo neišnyksta.
 - Stiliai pritaikyti pagal „Eigida“ brand kryptį:
   - pagrindinės spalvos `#008649`, `#006536`, akcentas `#F5A416`;
@@ -88,3 +92,8 @@ Backend aptiks `frontend/dist` ir aptarnaus UI iš to paties serverio.
 - `MANAGER_TOKEN_ADMINISTRACIJA` – pasirinktinis stabilus vadovo token administracijai.
 - `MANAGER_TOKEN` – senas fallback kintamasis (taikomas gamybai).
 - `DB_PATH` – pasirinktinai, DB failo kelias.
+- `FRONTEND_URL` – viešas aplikacijos adresas (naudojamas el. laiškų nuorodoms).
+- `MANAGER_NOTIFICATION_EMAIL` – gavėjo el. paštas (numatytas: `modestas@eigida.lt`).
+- `EMAIL_NOTIFICATIONS_ENABLED` – `true/false`, ar siųsti el. laiškus.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` – SMTP siuntimo nustatymai.
+- `SIGNED_REQUEST_REMINDER_INTERVAL_MS` – kaip dažnai tikrinti 14 d. priminimus (numatyta: 1 val.).

@@ -40,6 +40,7 @@ db.exec(`
     end_date TEXT NOT NULL,
     signed_request_received INTEGER NOT NULL DEFAULT 0,
     signed_request_received_at TEXT,
+    signed_request_reminder_sent_at TEXT,
     status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -58,6 +59,9 @@ const hasSignedRequestReceivedColumn = vacationColumns.some(
 );
 const hasSignedRequestReceivedAtColumn = vacationColumns.some(
   (column) => column.name === 'signed_request_received_at',
+);
+const hasSignedRequestReminderSentAtColumn = vacationColumns.some(
+  (column) => column.name === 'signed_request_reminder_sent_at',
 );
 
 if (!hasDepartmentColumn) {
@@ -78,6 +82,13 @@ if (!hasSignedRequestReceivedAtColumn) {
   db.exec(`
     ALTER TABLE vacations
     ADD COLUMN signed_request_received_at TEXT;
+  `);
+}
+
+if (!hasSignedRequestReminderSentAtColumn) {
+  db.exec(`
+    ALTER TABLE vacations
+    ADD COLUMN signed_request_reminder_sent_at TEXT;
   `);
 }
 
@@ -119,6 +130,7 @@ function rowToVacation(row) {
     endDate: row.end_date,
     signedRequestReceived: Number(row.signed_request_received) === 1,
     signedRequestReceivedAt: row.signed_request_received_at || null,
+    signedRequestReminderSentAt: row.signed_request_reminder_sent_at || null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -214,6 +226,7 @@ function listVacations({ department, includeRejected = false } = {}) {
         end_date,
         signed_request_received,
         signed_request_received_at,
+        signed_request_reminder_sent_at,
         status,
         created_at,
         updated_at
@@ -239,6 +252,7 @@ function getVacationById(id) {
         end_date,
         signed_request_received,
         signed_request_received_at,
+        signed_request_reminder_sent_at,
         status,
         created_at,
         updated_at
@@ -266,10 +280,11 @@ function createVacation({ employeeName, department, startDate, endDate }) {
       end_date,
       signed_request_received,
       signed_request_received_at,
+      signed_request_reminder_sent_at,
       status,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     id,
@@ -278,6 +293,7 @@ function createVacation({ employeeName, department, startDate, endDate }) {
     startDate,
     endDate,
     0,
+    null,
     null,
     VACATION_STATUSES.PENDING,
     createdAt,
@@ -322,6 +338,11 @@ function updateVacation(id, updates) {
 
     updateFields.push('signed_request_received_at = ?');
     values.push(updates.signedRequestReceived ? nowIso() : null);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'signedRequestReminderSentAt')) {
+    updateFields.push('signed_request_reminder_sent_at = ?');
+    values.push(updates.signedRequestReminderSentAt);
   }
 
   if (!updateFields.length) {

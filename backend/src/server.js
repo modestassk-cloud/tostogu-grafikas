@@ -4,6 +4,7 @@ const cors = require('cors');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { createEmailNotifierFromEnv } = require('./notifications');
 const {
   VACATION_STATUSES,
   DEPARTMENTS,
@@ -34,9 +35,25 @@ const MANAGER_ROLES = Object.freeze({
   DEPARTMENT_MANAGER: 'department-manager',
   ADMIN_SUPER: 'administration-super',
 });
+const SIGNED_REQUEST_REMINDER_DAYS = 14;
+const SIGNED_REQUEST_REMINDER_INTERVAL_MS = Number(
+  process.env.SIGNED_REQUEST_REMINDER_INTERVAL_MS || 60 * 60 * 1000,
+);
 
 app.use(cors());
 app.use(express.json());
+
+function normalizeBaseUrl(url) {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function getDefaultFrontendBaseUrl() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  return isProduction ? `http://localhost:${port}` : 'http://localhost:5173';
+}
+
+const frontendBaseUrl = normalizeBaseUrl(process.env.FRONTEND_URL || getDefaultFrontendBaseUrl());
+const emailNotifier = createEmailNotifierFromEnv();
 
 function isValidIsoDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -76,6 +93,132 @@ function parseDepartmentOrSendError(res, rawValue) {
   }
 
   return department;
+}
+
+function getDepartmentLabel(department) {
+  return department === DEPARTMENTS.ADMINISTRATION ? 'Administracija' : 'Gamyba';
+}
+
+function parseIsoDateUtc(isoDate) {
+  const [year, month, day] = String(isoDate || '')
+    .split('-')
+    .map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+}
+
+function getTodayIsoUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function differenceInCalendarDaysUtc(fromIso, toIso) {
+  const fromDate = parseIsoDateUtc(fromIso);
+  const toDate = parseIsoDateUtc(toIso);
+  const ms = toDate.getTime() - fromDate.getTime();
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
+function buildManagerRequestLink({ department, vacationId }) {
+  const base = `${frontendBaseUrl}/manager/${DEPARTMENTS.ADMINISTRATION}/${managerTokens[DEPARTMENTS.ADMINISTRATION]}`;
+  const params = new URLSearchParams({
+    department,
+    vacationId,
+  });
+  return `${base}?${params.toString()}`;
+}
+
+async function notifyAboutNewVacationRequest(vacation) {
+  const managerLink = buildManagerRequestLink({
+    department: vacation.department,
+    vacationId: vacation.id,
+  });
+
+  const subject = `Naujas atostogų prašymas: ${vacation.employeeName}`;
+  const text = [
+    'Sveiki,',
+    '',
+    `Gautas naujas atostogų prašymas (${getDepartmentLabel(vacation.department)}).`,
+    `Darbuotojas: ${vacation.employeeName}`,
+    `Laikotarpis: ${vacation.startDate} – ${vacation.endDate}`,
+    '',
+    'Atidaryti konkretų prašymą:',
+    managerLink,
+    '',
+    'Eigida Atostogų sistema',
+  ].join('\n');
+
+  return emailNotifier.sendMail({ subject, text });
+}
+
+async function notifyAboutMissingSignedRequest(vacation, daysUntilStart) {
+  const managerLink = buildManagerRequestLink({
+    department: vacation.department,
+    vacationId: vacation.id,
+  });
+
+  const subject = `Priminimas: negautas pasirašytas prašymas (${vacation.employeeName})`;
+  const text = [
+    'Sveiki,',
+    '',
+    `Iki atostogų liko ${daysUntilStart} d., bet pasirašytas prašymas dar negautas.`,
+    `Padalinys: ${getDepartmentLabel(vacation.department)}`,
+    `Darbuotojas: ${vacation.employeeName}`,
+    `Laikotarpis: ${vacation.startDate} – ${vacation.endDate}`,
+    '',
+    'Atidaryti konkretų prašymą:',
+    managerLink,
+    '',
+    'Eigida Atostogų sistema',
+  ].join('\n');
+
+  return emailNotifier.sendMail({ subject, text });
+}
+
+let reminderJobRunning = false;
+let reminderJobScheduled = false;
+
+async function runSignedRequestReminderJob() {
+  if (reminderJobRunning) {
+    return;
+  }
+  reminderJobRunning = true;
+
+  try {
+    const todayIso = getTodayIsoUtc();
+    const vacations = listVacations({ includeRejected: true });
+    const candidates = vacations.filter((vacation) => {
+      if (vacation.status !== VACATION_STATUSES.APPROVED) return false;
+      if (vacation.signedRequestReceived) return false;
+      if (vacation.signedRequestReminderSentAt) return false;
+
+      const daysUntilStart = differenceInCalendarDaysUtc(todayIso, vacation.startDate);
+      return daysUntilStart >= 0 && daysUntilStart <= SIGNED_REQUEST_REMINDER_DAYS;
+    });
+
+    for (const vacation of candidates) {
+      const daysUntilStart = differenceInCalendarDaysUtc(todayIso, vacation.startDate);
+      const result = await notifyAboutMissingSignedRequest(vacation, daysUntilStart);
+
+      if (result?.sent) {
+        updateVacation(vacation.id, {
+          signedRequestReminderSentAt: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Nepavyko įvykdyti pasirašyto prašymo priminimų job:', error);
+  } finally {
+    reminderJobRunning = false;
+  }
+}
+
+function scheduleSignedRequestReminderJobSoon(delayMs = 2500) {
+  if (reminderJobScheduled) return;
+  reminderJobScheduled = true;
+
+  setTimeout(() => {
+    reminderJobScheduled = false;
+    runSignedRequestReminderJob();
+  }, delayMs);
 }
 
 function managerAuth(req, res, next) {
@@ -160,6 +303,9 @@ app.post('/api/vacations', (req, res) => {
   }
 
   const created = createVacation({ employeeName, department, startDate, endDate });
+  notifyAboutNewVacationRequest(created).catch((error) => {
+    console.error('Nepavyko išsiųsti naujo prašymo el. laiško:', error);
+  });
   res.status(201).json({ vacation: created });
 });
 
@@ -244,6 +390,7 @@ app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
   }
 
   const updated = updateVacation(id, updates);
+  scheduleSignedRequestReminderJobSoon();
   res.json({ vacation: updated });
 });
 
@@ -254,6 +401,7 @@ app.post('/api/manager/:department/vacations/:id/approve', managerAuth, (req, re
   }
 
   const updated = updateVacation(req.params.id, { status: VACATION_STATUSES.APPROVED });
+  scheduleSignedRequestReminderJobSoon();
   res.json({ vacation: updated });
 });
 
@@ -278,17 +426,7 @@ if (fs.existsSync(frontendDistPath)) {
   });
 }
 
-function normalizeBaseUrl(url) {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
 app.listen(port, () => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const defaultFrontendBaseUrl = isProduction
-    ? `http://localhost:${port}`
-    : 'http://localhost:5173';
-  const frontendBaseUrl = normalizeBaseUrl(process.env.FRONTEND_URL || defaultFrontendBaseUrl);
-
   console.log(`API veikia: http://localhost:${port}/api/health`);
   console.log(`DB failas: ${dbPath}`);
   console.log(`Darbuotojų nuoroda: ${frontendBaseUrl}/`);
@@ -298,4 +436,18 @@ app.listen(port, () => {
   console.log(
     `Papildoma vadovo nuoroda (Gamyba, tik gamybai): ${frontendBaseUrl}/manager/${DEPARTMENTS.PRODUCTION}/${managerTokens[DEPARTMENTS.PRODUCTION]}`,
   );
+  console.log(
+    `Email pranešimai: ${
+      emailNotifier.enabled
+        ? `aktyvūs (gavėjas: ${emailNotifier.targetEmail || 'nenurodytas'})`
+        : 'neaktyvūs (trūksta SMTP konfigūracijos)'
+    }`,
+  );
+
+  setTimeout(() => {
+    runSignedRequestReminderJob();
+  }, 15000);
+  setInterval(() => {
+    runSignedRequestReminderJob();
+  }, SIGNED_REQUEST_REMINDER_INTERVAL_MS);
 });

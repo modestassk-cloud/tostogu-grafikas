@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import {
   approveVacation,
   createVacationRequest,
@@ -22,14 +22,25 @@ function utcMonthAnchorNow() {
 
 function VacationDashboard({ isManager }) {
   const { token = '', department: managerDepartmentParam = '' } = useParams();
+  const location = useLocation();
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const requestedDepartmentRaw = String(queryParams.get('department') || '')
+    .trim()
+    .toLowerCase();
+  const requestedDepartment = isValidDepartment(requestedDepartmentRaw)
+    ? requestedDepartmentRaw
+    : '';
+  const requestedVacationId = String(queryParams.get('vacationId') || '').trim();
   const managerToken = isManager ? token : '';
   const managerDepartment = String(managerDepartmentParam || '').trim().toLowerCase();
   const managerDepartmentValid = !isManager || isValidDepartment(managerDepartment);
 
   const [selectedDepartment, setSelectedDepartment] = useState(() =>
-    isManager && isValidDepartment(managerDepartment)
-      ? managerDepartment
-      : DEPARTMENTS.PRODUCTION,
+    isManager
+      ? isValidDepartment(managerDepartment)
+        ? managerDepartment
+        : DEPARTMENTS.PRODUCTION
+      : requestedDepartment || DEPARTMENTS.PRODUCTION,
   );
   const [managerAccess, setManagerAccess] = useState({
     managerRole: isManager ? 'department-manager' : 'employee',
@@ -49,7 +60,7 @@ function VacationDashboard({ isManager }) {
   const [savingAction, setSavingAction] = useState(false);
 
   const [vacations, setVacations] = useState([]);
-  const [selectedVacationId, setSelectedVacationId] = useState(null);
+  const [selectedVacationId, setSelectedVacationId] = useState(requestedVacationId || null);
 
   const [showModal, setShowModal] = useState(false);
   const [viewMode, setViewMode] = useState('month');
@@ -155,12 +166,30 @@ function VacationDashboard({ isManager }) {
   }, [isManager, managerDepartment, managerDepartmentValid, managerToken]);
 
   useEffect(() => {
-    if (!isManager || !isValidDepartment(managerDepartment)) {
+    if (!isManager || !isValidDepartment(managerDepartment) || managerCanManageAllDepartments) {
       return;
     }
 
     setSelectedDepartment(managerDepartment);
-  }, [isManager, managerDepartment]);
+  }, [isManager, managerCanManageAllDepartments, managerDepartment]);
+
+  useEffect(() => {
+    if (!isManager || !managerCanManageAllDepartments || !requestedDepartment) {
+      return;
+    }
+
+    setSelectedDepartment(requestedDepartment);
+  }, [isManager, managerCanManageAllDepartments, requestedDepartment]);
+
+  useEffect(() => {
+    if (!requestedVacationId || selectedVacationId === requestedVacationId) {
+      return;
+    }
+
+    if (vacations.some((vacation) => vacation.id === requestedVacationId)) {
+      setSelectedVacationId(requestedVacationId);
+    }
+  }, [requestedVacationId, selectedVacationId, vacations]);
 
   useEffect(() => {
     if (!sessionValidated) {
