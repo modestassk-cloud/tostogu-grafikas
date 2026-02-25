@@ -303,9 +303,15 @@ app.post('/api/vacations', (req, res) => {
   }
 
   const created = createVacation({ employeeName, department, startDate, endDate });
-  notifyAboutNewVacationRequest(created).catch((error) => {
-    console.error('Nepavyko išsiųsti naujo prašymo el. laiško:', error);
-  });
+  notifyAboutNewVacationRequest(created)
+    .then((result) => {
+      if (result?.sent) {
+        console.log(`Naujo prašymo el. laiškas išsiųstas: ${created.id}`);
+      }
+    })
+    .catch((error) => {
+      console.error('Nepavyko išsiųsti naujo prašymo el. laiško:', error);
+    });
   res.status(201).json({ vacation: created });
 });
 
