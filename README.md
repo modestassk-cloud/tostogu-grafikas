@@ -96,4 +96,5 @@ Backend aptiks `frontend/dist` ir aptarnaus UI iš to paties serverio.
 - `MANAGER_NOTIFICATION_EMAIL` – gavėjo el. paštas (numatytas: `modestas@eigida.lt`).
 - `EMAIL_NOTIFICATIONS_ENABLED` – `true/false`, ar siųsti el. laiškus.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` – SMTP siuntimo nustatymai.
+- `SMTP_ALLOW_INTERNAL_INTERFACES` – konteineriams skirtas DNS fallback (`true` rekomenduojama Railway aplinkoje).
 - `SIGNED_REQUEST_REMINDER_INTERVAL_MS` – kaip dažnai tikrinti 14 d. priminimus (numatyta: 1 val.).

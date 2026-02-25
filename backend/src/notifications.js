@@ -19,6 +19,10 @@ function createEmailNotifierFromEnv() {
   ).trim();
   const port = Number(process.env.SMTP_PORT || 587);
   const secure = parseBoolean(process.env.SMTP_SECURE || (port === 465 ? 'true' : 'false'));
+  const allowInternalNetworkInterfaces = parseBoolean(
+    process.env.SMTP_ALLOW_INTERNAL_INTERFACES || 'true',
+    true,
+  );
 
   const canSend = enabled && host && user && pass && from && to;
   let warned = false;
@@ -28,6 +32,8 @@ function createEmailNotifierFromEnv() {
         port,
         secure,
         auth: { user, pass },
+        // Helps SMTP DNS resolution inside containerized runtimes where only internal IPv4 interfaces are visible.
+        allowInternalNetworkInterfaces,
       })
     : null;
 
