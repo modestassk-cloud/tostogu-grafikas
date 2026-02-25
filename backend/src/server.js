@@ -421,6 +421,34 @@ app.post('/api/manager/:department/vacations/:id/reject', managerAuth, (req, res
   res.json({ vacation: updated });
 });
 
+app.post('/api/manager/:department/notifications/test', managerAuth, async (req, res) => {
+  if (!req.canManageAllDepartments) {
+    return res.status(403).json({ error: 'Testinį email gali siųsti tik administracijos vadovas.' });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const result = await emailNotifier.sendMail({
+      subject: `TESTAS: Atostogu sistema (${now})`,
+      text: 'Tai testinis pranešimas iš produkcinės atostogų sistemos.',
+    });
+
+    if (!result?.sent) {
+      return res.status(503).json({ error: 'Email siuntimas neaktyvus.' });
+    }
+
+    res.json({
+      ok: true,
+      sent: true,
+      targetEmail: emailNotifier.targetEmail,
+      sentAt: now,
+    });
+  } catch (error) {
+    const details = error && error.message ? error.message : 'Unknown error';
+    return res.status(502).json({ error: `Email siuntimas nepavyko: ${details}` });
+  }
+});
+
 const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
 if (fs.existsSync(frontendDistPath)) {
   app.use(express.static(frontendDistPath));
