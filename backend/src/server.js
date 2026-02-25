@@ -440,6 +440,7 @@ app.post('/api/manager/:department/notifications/test', managerAuth, async (req,
     res.json({
       ok: true,
       sent: true,
+      provider: emailNotifier.provider || null,
       targetEmail: emailNotifier.targetEmail,
       sentAt: now,
     });
@@ -473,8 +474,8 @@ app.listen(port, () => {
   console.log(
     `Email pranešimai: ${
       emailNotifier.enabled
-        ? `aktyvūs (gavėjas: ${emailNotifier.targetEmail || 'nenurodytas'})`
-        : 'neaktyvūs (trūksta SMTP konfigūracijos)'
+        ? `aktyvūs (provider: ${emailNotifier.provider || 'unknown'}, gavėjas: ${emailNotifier.targetEmail || 'nenurodytas'})`
+        : 'neaktyvūs (trūksta email konfigūracijos)'
     }`,
   );
 

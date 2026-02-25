@@ -95,6 +95,9 @@ Backend aptiks `frontend/dist` ir aptarnaus UI iš to paties serverio.
 - `FRONTEND_URL` – viešas aplikacijos adresas (naudojamas el. laiškų nuorodoms).
 - `MANAGER_NOTIFICATION_EMAIL` – gavėjo el. paštas (numatytas: `modestas@eigida.lt`).
 - `EMAIL_NOTIFICATIONS_ENABLED` – `true/false`, ar siųsti el. laiškus.
+- `EMAIL_PROVIDER` – `auto` (numatytas), `resend` arba `smtp`.
+- `RESEND_API_KEY`, `RESEND_FROM` – rekomenduojamas email siuntimo būdas per Resend API.
+- `RESEND_API_BASE` – pasirinktinai, API URL (numatytas: `https://api.resend.com`).
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` – SMTP siuntimo nustatymai.
 - `SMTP_ALLOW_INTERNAL_INTERFACES` – konteineriams skirtas DNS fallback (`true` rekomenduojama Railway aplinkoje).
 - `SIGNED_REQUEST_REMINDER_INTERVAL_MS` – kaip dažnai tikrinti 14 d. priminimus (numatyta: 1 val.).
