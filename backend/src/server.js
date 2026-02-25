@@ -19,6 +19,7 @@ const {
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
+app.set('trust proxy', 1);
 
 const managerTokens = getOrCreateManagerTokens({
   [DEPARTMENTS.PRODUCTION]:
@@ -40,8 +41,61 @@ const SIGNED_REQUEST_REMINDER_INTERVAL_MS = Number(
   process.env.SIGNED_REQUEST_REMINDER_INTERVAL_MS || 60 * 60 * 1000,
 );
 
+function normalizeIpAddress(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return '';
+  if (value === '::1') return '127.0.0.1';
+  return value.replace(/^::ffff:/, '');
+}
+
+function parseAllowedIps(rawValue) {
+  return String(rawValue || '')
+    .split(',')
+    .map((item) => normalizeIpAddress(item))
+    .filter(Boolean);
+}
+
+const defaultAllowedIps = ['85.206.86.184'];
+const ipAllowlist = new Set(
+  parseAllowedIps(process.env.ALLOWED_IPS || defaultAllowedIps.join(',')),
+);
+if (process.env.NODE_ENV !== 'production') {
+  ipAllowlist.add('127.0.0.1');
+}
+
+const ipAllowlistEnabled =
+  String(process.env.IP_ALLOWLIST_ENABLED || 'true').toLowerCase() !== 'false';
+const ipAllowlistExemptPaths = new Set(['/api/health']);
+
+function getClientIp(req) {
+  return normalizeIpAddress(req.ip || req.socket?.remoteAddress || '');
+}
+
+function ipAllowlistMiddleware(req, res, next) {
+  if (!ipAllowlistEnabled) {
+    return next();
+  }
+
+  if (ipAllowlistExemptPaths.has(req.path)) {
+    return next();
+  }
+
+  const clientIp = getClientIp(req);
+  if (ipAllowlist.has(clientIp)) {
+    return next();
+  }
+
+  const message = 'Prieiga leidžiama tik iš biuro tinklo.';
+  if (req.path.startsWith('/api/')) {
+    return res.status(403).json({ error: message });
+  }
+
+  return res.status(403).type('text/plain').send(message);
+}
+
 app.use(cors());
 app.use(express.json());
+app.use(ipAllowlistMiddleware);
 
 function normalizeBaseUrl(url) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
@@ -476,6 +530,11 @@ app.listen(port, () => {
       emailNotifier.enabled
         ? `aktyvūs (provider: ${emailNotifier.provider || 'unknown'}, gavėjas: ${emailNotifier.targetEmail || 'nenurodytas'})`
         : 'neaktyvūs (trūksta email konfigūracijos)'
+    }`,
+  );
+  console.log(
+    `IP ribojimas: ${
+      ipAllowlistEnabled ? `aktyvus (${Array.from(ipAllowlist).join(', ')})` : 'išjungtas'
     }`,
   );
 

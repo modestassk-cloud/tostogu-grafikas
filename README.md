@@ -93,6 +93,8 @@ Backend aptiks `frontend/dist` ir aptarnaus UI iš to paties serverio.
 - `MANAGER_TOKEN` – senas fallback kintamasis (taikomas gamybai).
 - `DB_PATH` – pasirinktinai, DB failo kelias.
 - `FRONTEND_URL` – viešas aplikacijos adresas (naudojamas el. laiškų nuorodoms).
+- `ALLOWED_IPS` – leistini IP adresai (kableliais), iš kurių galima pasiekti UI ir API (numatyta: `85.206.86.184`).
+- `IP_ALLOWLIST_ENABLED` – `true/false`, ar taikyti IP ribojimą (numatyta: `true`).
 - `MANAGER_NOTIFICATION_EMAIL` – gavėjo el. paštas (numatytas: `modestas@eigida.lt`).
 - `EMAIL_NOTIFICATIONS_ENABLED` – `true/false`, ar siųsti el. laiškus.
 - `EMAIL_PROVIDER` – `auto` (numatytas), `resend` arba `smtp`.
@@ -101,3 +103,5 @@ Backend aptiks `frontend/dist` ir aptarnaus UI iš to paties serverio.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` – SMTP siuntimo nustatymai.
 - `SMTP_ALLOW_INTERNAL_INTERFACES` – konteineriams skirtas DNS fallback (`true` rekomenduojama Railway aplinkoje).
 - `SIGNED_REQUEST_REMINDER_INTERVAL_MS` – kaip dažnai tikrinti 14 d. priminimus (numatyta: 1 val.).
+
+Pastaba: `/api/health` paliekamas neužblokuotas, kad neveiktų Railway healthcheck problemos.
