@@ -19,7 +19,7 @@ const {
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
-app.set('trust proxy', 1);
+app.set('trust proxy', true);
 
 const managerTokens = getOrCreateManagerTokens({
   [DEPARTMENTS.PRODUCTION]:
@@ -55,6 +55,10 @@ function parseAllowedIps(rawValue) {
     .filter(Boolean);
 }
 
+function uniqueItems(items) {
+  return Array.from(new Set(items.filter(Boolean)));
+}
+
 const defaultAllowedIps = ['85.206.86.184'];
 const ipAllowlist = new Set(
   parseAllowedIps(process.env.ALLOWED_IPS || defaultAllowedIps.join(',')),
@@ -67,8 +71,22 @@ const ipAllowlistEnabled =
   String(process.env.IP_ALLOWLIST_ENABLED || 'true').toLowerCase() !== 'false';
 const ipAllowlistExemptPaths = new Set(['/api/health']);
 
-function getClientIp(req) {
-  return normalizeIpAddress(req.ip || req.socket?.remoteAddress || '');
+function getClientIps(req) {
+  const forwardedFor = String(req.get('x-forwarded-for') || '');
+  const forwardedIps = forwardedFor
+    .split(',')
+    .map((value) => normalizeIpAddress(value))
+    .filter(Boolean);
+
+  const candidates = [
+    normalizeIpAddress(req.get('cf-connecting-ip')),
+    normalizeIpAddress(req.get('true-client-ip')),
+    normalizeIpAddress(req.get('x-real-ip')),
+    normalizeIpAddress(req.ip || req.socket?.remoteAddress || ''),
+    forwardedIps[0] || '',
+  ];
+
+  return uniqueItems(candidates);
 }
 
 function ipAllowlistMiddleware(req, res, next) {
@@ -80,17 +98,31 @@ function ipAllowlistMiddleware(req, res, next) {
     return next();
   }
 
-  const clientIp = getClientIp(req);
-  if (ipAllowlist.has(clientIp)) {
+  const clientIps = getClientIps(req);
+  const isAllowed = clientIps.some((ip) => ipAllowlist.has(ip));
+
+  if (isAllowed) {
     return next();
   }
 
+  const detectedIp = clientIps[0] || null;
+  const xForwardedFor = req.get('x-forwarded-for') || '-';
+  console.warn(
+    `[IP_ALLOWLIST] Blokuotas užklausos IP. detected=${detectedIp || '-'} candidates=${clientIps.join(',') || '-'} x-forwarded-for=${xForwardedFor}`,
+  );
+
   const message = 'Prieiga leidžiama tik iš biuro tinklo.';
   if (req.path.startsWith('/api/')) {
-    return res.status(403).json({ error: message });
+    return res.status(403).json({
+      error: message,
+      detectedIp,
+    });
   }
 
-  return res.status(403).type('text/plain').send(message);
+  return res
+    .status(403)
+    .type('text/plain')
+    .send(`${message} Aptiktas IP: ${detectedIp || 'nenustatytas'}.`);
 }
 
 app.use(cors());
