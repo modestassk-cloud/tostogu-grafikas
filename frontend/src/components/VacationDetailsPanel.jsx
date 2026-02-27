@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatHumanDate } from '../utilsDate';
+import { formatHumanDate, formatHumanDateTime } from '../utilsDate';
 import { getSignedRequestAlert, getVacationStatusView } from '../vacationStatus';
 
 function VacationDetailsPanel({
@@ -158,6 +158,10 @@ function VacationDetailsPanel({
 
   const selectedStatusView = getVacationStatusView(vacation);
   const selectedRequestAlert = getSignedRequestAlert(vacation);
+  const lastSignedRequestLabel = vacation.signedRequestReceived ? 'Gautas' : 'Nenurodytas';
+  const lastSignedRequestTimestamp = formatHumanDateTime(
+    vacation.signedRequestReceivedAt || vacation.updatedAt,
+  );
 
   return (
     <aside className="details-panel">
@@ -221,6 +225,9 @@ function VacationDetailsPanel({
                 Žymą apie gautą pasirašytą prašymą gali keisti tik administracijos vadovas.
               </p>
             )}
+            <p className="panel-note">
+              Paskutinis: <strong>{lastSignedRequestLabel}</strong> ({lastSignedRequestTimestamp})
+            </p>
           </section>
         ) : null}
 

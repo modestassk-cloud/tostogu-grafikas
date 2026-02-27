@@ -1,4 +1,5 @@
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const LITHUANIA_TIME_ZONE = 'Europe/Vilnius';
 const LITHUANIAN_FIXED_HOLIDAYS = Object.freeze([
   '01-01',
   '02-16',
@@ -99,6 +100,50 @@ export function formatHumanDate(isoDate) {
     month: '2-digit',
     day: '2-digit',
     timeZone: 'UTC',
+  });
+}
+
+function parseDateTimeValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const hasTimeZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(normalized);
+  const parseValue = hasTimeZone ? normalized : `${normalized}Z`;
+  const parsed = new Date(parseValue);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+export function formatHumanDateTime(value, fallback = 'Nenurodytas') {
+  const date = parseDateTimeValue(value);
+  if (!date) {
+    return fallback;
+  }
+
+  return date.toLocaleString('lt-LT', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: LITHUANIA_TIME_ZONE,
   });
 }
 
