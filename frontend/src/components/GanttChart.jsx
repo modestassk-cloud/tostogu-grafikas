@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getEntryTypeLabel } from '../entryTypes';
 import {
   clampInterval,
   differenceInDays,
@@ -143,7 +144,7 @@ function VacationBar({
   };
 
   const statusView = getVacationStatusView(bar.vacation);
-  const tooltip = `${bar.vacation.employeeName}\n${bar.vacation.startDate} → ${bar.vacation.endDate}\n${statusView.label}`;
+  const tooltip = `${bar.vacation.employeeName}\n${getEntryTypeLabel(bar.vacation)}\n${bar.vacation.startDate} → ${bar.vacation.endDate}\n${statusView.label}`;
 
   return (
     <button
@@ -421,7 +422,7 @@ function GanttChart({
             })
           ) : (
             <div className="gantt-empty">
-              Šiame intervale dar nėra atostogų įrašų.
+              Šiame intervale dar nėra įrašų.
             </div>
           )}
         </div>

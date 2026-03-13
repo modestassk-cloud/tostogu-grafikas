@@ -1,3 +1,5 @@
+import { isIllnessEntry } from './entryTypes';
+
 const DEFAULT_STATUS_LABEL = {
   pending: 'Laukia patvirtinimo',
   approved: 'Patvirtinta',
@@ -27,6 +29,10 @@ function differenceInCalendarDays(fromIso, toIso) {
 }
 
 function needsSignedRequest(vacation) {
+  if (isIllnessEntry(vacation)) {
+    return false;
+  }
+
   return vacation?.status === 'approved';
 }
 
@@ -71,9 +77,31 @@ function isOnLeaveToday(vacation) {
   return vacation.startDate <= todayIso && vacation.endDate >= todayIso;
 }
 
+function isIllToday(vacation) {
+  if (!isIllnessEntry(vacation) || vacation.status === 'rejected') {
+    return false;
+  }
+
+  const todayIso = getTodayIsoLocal();
+  return vacation.startDate <= todayIso && vacation.endDate >= todayIso;
+}
+
 export function getVacationStatusView(vacation) {
   if (!vacation || !vacation.status) {
     return { key: 'unknown', label: '' };
+  }
+
+  if (isIllnessEntry(vacation)) {
+    if (vacation.status === 'rejected') {
+      return {
+        key: vacation.status,
+        label: DEFAULT_STATUS_LABEL[vacation.status] || vacation.status,
+      };
+    }
+
+    return isIllToday(vacation)
+      ? { key: 'illness-active', label: 'Serga' }
+      : { key: 'illness', label: 'Liga' };
   }
 
   if (isBlockedByMissingRequest(vacation)) {

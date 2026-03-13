@@ -7,9 +7,11 @@ const path = require('path');
 const { createEmailNotifierFromEnv } = require('./notifications');
 const {
   VACATION_STATUSES,
+  ENTRY_TYPES,
   DEPARTMENTS,
   dbPath,
   isValidDepartment,
+  isValidEntryType,
   getOrCreateManagerTokens,
   listVacations,
   createVacation,
@@ -39,6 +41,14 @@ const MANAGER_ROLES = Object.freeze({
 const SIGNED_REQUEST_REMINDER_DAYS = 14;
 const SIGNED_REQUEST_REMINDER_INTERVAL_MS = Number(
   process.env.SIGNED_REQUEST_REMINDER_INTERVAL_MS || 60 * 60 * 1000,
+);
+const INTEGRATION_TOKEN_HEADER = 'x-integration-token';
+const integrationAllowedPaths = new Set(['/api/vacations']);
+const integrationTokens = new Set(
+  String(process.env.INTEGRATION_TOKENS || '')
+    .split(',')
+    .map((token) => String(token || '').trim())
+    .filter(Boolean),
 );
 
 function normalizeIpAddress(rawValue) {
@@ -92,6 +102,13 @@ function getClientIps(req) {
 function ipAllowlistMiddleware(req, res, next) {
   if (!ipAllowlistEnabled) {
     return next();
+  }
+
+  if (integrationAllowedPaths.has(req.path) && integrationTokens.size > 0) {
+    const providedIntegrationToken = String(req.get(INTEGRATION_TOKEN_HEADER) || '').trim();
+    if (providedIntegrationToken && integrationTokens.has(providedIntegrationToken)) {
+      return next();
+    }
   }
 
   if (ipAllowlistExemptPaths.has(req.path)) {
@@ -168,6 +185,10 @@ function normalizeDepartment(rawValue) {
   return String(rawValue || '').trim().toLowerCase();
 }
 
+function normalizeEntryType(rawValue) {
+  return String(rawValue || '').trim().toLowerCase();
+}
+
 function parseDepartmentOrSendError(res, rawValue) {
   const department = normalizeDepartment(rawValue);
 
@@ -179,6 +200,20 @@ function parseDepartmentOrSendError(res, rawValue) {
   }
 
   return department;
+}
+
+function parseEntryTypeOrSendError(res, rawValue, fallback = ENTRY_TYPES.VACATION) {
+  const value = normalizeEntryType(rawValue);
+  if (!value) {
+    return fallback;
+  }
+
+  if (!isValidEntryType(value)) {
+    res.status(400).json({ error: 'Neteisingas įrašo tipas. Galimi: vacation, illness.' });
+    return null;
+  }
+
+  return value;
 }
 
 function getDepartmentLabel(department) {
@@ -272,6 +307,7 @@ async function runSignedRequestReminderJob() {
     const todayIso = getTodayIsoUtc();
     const vacations = listVacations({ includeRejected: true });
     const candidates = vacations.filter((vacation) => {
+      if (vacation.entryType !== ENTRY_TYPES.VACATION) return false;
       if (vacation.status !== VACATION_STATUSES.APPROVED) return false;
       if (vacation.signedRequestReceived) return false;
       if (vacation.signedRequestReminderSentAt) return false;
@@ -369,10 +405,11 @@ app.get('/api/vacations', (req, res) => {
 app.post('/api/vacations', (req, res) => {
   const employeeName = sanitizeName(req.body.employeeName);
   const department = parseDepartmentOrSendError(res, req.body.department);
+  const entryType = parseEntryTypeOrSendError(res, req.body.entryType);
   const startDate = String(req.body.startDate || '');
   const endDate = String(req.body.endDate || '');
 
-  if (!department) {
+  if (!department || !entryType) {
     return;
   }
 
@@ -388,16 +425,18 @@ app.post('/api/vacations', (req, res) => {
     return res.status(400).json({ error: 'Pradžios data negali būti vėlesnė už pabaigos datą.' });
   }
 
-  const created = createVacation({ employeeName, department, startDate, endDate });
-  notifyAboutNewVacationRequest(created)
-    .then((result) => {
-      if (result?.sent) {
-        console.log(`Naujo prašymo el. laiškas išsiųstas: ${created.id}`);
-      }
-    })
-    .catch((error) => {
-      console.error('Nepavyko išsiųsti naujo prašymo el. laiško:', error);
-    });
+  const created = createVacation({ employeeName, department, entryType, startDate, endDate });
+  if (created.entryType === ENTRY_TYPES.VACATION) {
+    notifyAboutNewVacationRequest(created)
+      .then((result) => {
+        if (result?.sent) {
+          console.log(`Naujo prašymo el. laiškas išsiųstas: ${created.id}`);
+        }
+      })
+      .catch((error) => {
+        console.error('Nepavyko išsiųsti naujo prašymo el. laiško:', error);
+      });
+  }
   res.status(201).json({ vacation: created });
 });
 
@@ -454,7 +493,10 @@ app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'status')) {
     const status = String(req.body.status || '').trim();
-    const allowed = new Set(Object.values(VACATION_STATUSES));
+    const allowed =
+      existing.entryType === ENTRY_TYPES.ILLNESS
+        ? new Set([VACATION_STATUSES.APPROVED, VACATION_STATUSES.REJECTED])
+        : new Set(Object.values(VACATION_STATUSES));
     if (!allowed.has(status)) {
       return res.status(400).json({ error: 'Neleistina būsena.' });
     }
@@ -462,6 +504,10 @@ app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'signedRequestReceived')) {
+    if (existing.entryType !== ENTRY_TYPES.VACATION) {
+      return res.status(400).json({ error: 'Ligos įrašams pasirašyto prašymo žyma netaikoma.' });
+    }
+
     if (!req.canEditSignedRequest) {
       return res.status(403).json({
         error: 'Pasirašyto prašymo žymą gali keisti tik administracijos vadovas.',

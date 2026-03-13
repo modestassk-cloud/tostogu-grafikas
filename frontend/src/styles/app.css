@@ -12,6 +12,8 @@
   --text-muted: #5b6761;
   --danger: #b83a2d;
   --success: #0d7a40;
+  --illness: rgba(172, 58, 74, 0.88);
+  --illness-deep: #8f2238;
   --pending: rgba(245, 164, 22, 0.38);
   --approved: rgba(0, 134, 73, 0.84);
   --rejected: rgba(23, 0, 10, 0.22);
@@ -34,7 +36,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -266,6 +269,13 @@ input {
   color: var(--brand-dark);
 }
 
+.status-chip.status-illness,
+.status-chip.status-illness-active {
+  background: rgba(172, 58, 74, 0.14);
+  border-color: rgba(143, 34, 56, 0.42);
+  color: var(--illness-deep);
+}
+
 .status-chip.status-missing-request {
   background: rgba(245, 164, 22, 0.28);
   border-color: rgba(245, 164, 22, 0.74);
@@ -302,7 +312,8 @@ input {
 }
 
 input[type='text'],
-input[type='date'] {
+input[type='date'],
+select {
   border-radius: 10px;
   border: 1px solid var(--line-strong);
   background: var(--surface);
@@ -311,7 +322,8 @@ input[type='date'] {
 }
 
 input[type='text']:focus,
-input[type='date']:focus {
+input[type='date']:focus,
+select:focus {
   outline: none;
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(0, 134, 73, 0.16);
@@ -396,6 +408,17 @@ input[type='date']:focus {
   color: var(--text-muted);
 }
 
+.entry-type-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(23, 0, 10, 0.06);
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
 .warning-text {
   color: #8a2a20;
   font-weight: 600;
@@ -418,6 +441,10 @@ input[type='date']:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.action-grid.single-action {
+  grid-template-columns: 1fr;
 }
 
 button {
@@ -745,6 +772,13 @@ button:disabled {
 .vacation-bar.status-on-leave {
   background: linear-gradient(100deg, rgba(23, 0, 10, 0.9), rgba(54, 20, 37, 0.96));
   border-color: rgba(23, 0, 10, 0.95);
+  color: #fff;
+}
+
+.vacation-bar.status-illness,
+.vacation-bar.status-illness-active {
+  background: linear-gradient(100deg, rgba(172, 58, 74, 0.9), rgba(143, 34, 56, 0.98));
+  border-color: rgba(112, 22, 43, 0.95);
   color: #fff;
 }
 

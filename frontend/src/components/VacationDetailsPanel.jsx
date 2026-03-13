@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { getEntryTypeLabel, isIllnessEntry } from '../entryTypes';
 import { formatHumanDate, formatHumanDateTime } from '../utilsDate';
 import { getSignedRequestAlert, getVacationStatusView } from '../vacationStatus';
 
@@ -60,8 +61,8 @@ function VacationDetailsPanel({
   if (!vacation) {
     return (
       <aside className="details-panel">
-        <h3>Atostogų informacija</h3>
-        <p className="panel-note">Visos patvirtintos ir laukiančios atostogos:</p>
+        <h3>Įrašų informacija</h3>
+        <p className="panel-note">Visi patvirtinti ir laukiantys įrašai:</p>
         {vacationList.length ? (
           <div className="details-list">
             {vacationList.map((item) => {
@@ -75,6 +76,7 @@ function VacationDetailsPanel({
                 >
                   <div className="vacation-list-main">
                     <strong>{item.employeeName}</strong>
+                    <span className="entry-type-badge">{getEntryTypeLabel(item)}</span>
                     <span>
                       {formatHumanDate(item.startDate)} – {formatHumanDate(item.endDate)}
                     </span>
@@ -87,7 +89,7 @@ function VacationDetailsPanel({
             })}
           </div>
         ) : (
-          <p className="panel-note">Šiuo metu nėra patvirtintų ar laukiančių atostogų įrašų.</p>
+          <p className="panel-note">Šiuo metu nėra patvirtintų ar laukiančių įrašų.</p>
         )}
 
         {canEditSignedRequest && signedRequestAlerts.length ? (
@@ -103,6 +105,7 @@ function VacationDetailsPanel({
                 >
                   <div className="vacation-list-main">
                     <strong>{item.employeeName}</strong>
+                    <span className="entry-type-badge">{getEntryTypeLabel(item)}</span>
                     <span>
                       {formatHumanDate(item.startDate)} – {formatHumanDate(item.endDate)}
                     </span>
@@ -158,6 +161,7 @@ function VacationDetailsPanel({
 
   const selectedStatusView = getVacationStatusView(vacation);
   const selectedRequestAlert = getSignedRequestAlert(vacation);
+  const isIllness = isIllnessEntry(vacation);
   const lastSignedRequestLabel = vacation.signedRequestReceived ? 'Gautas' : 'Nenurodytas';
   const lastSignedRequestTimestamp = formatHumanDateTime(
     vacation.signedRequestReceivedAt || vacation.updatedAt,
@@ -166,12 +170,15 @@ function VacationDetailsPanel({
   return (
     <aside className="details-panel">
       <header>
-        <h3>Atostogų informacija</h3>
+        <h3>Įrašo informacija</h3>
       </header>
 
       <div className={`status-chip status-${selectedStatusView.key}`}>
         {selectedStatusView.label}
       </div>
+      <p className="panel-note">
+        Tipas: <strong>{getEntryTypeLabel(vacation)}</strong>
+      </p>
       {selectedRequestAlert ? (
         <p className={`request-alert ${selectedRequestAlert.key}`}>{selectedRequestAlert.label}</p>
       ) : null}
@@ -207,7 +214,7 @@ function VacationDetailsPanel({
           />
         </label>
 
-        {isManager ? (
+        {isManager && !isIllness ? (
           <section className={`signed-request-box ${canEditSignedRequest ? 'editable' : 'readonly'}`}>
             <p className="signed-request-title">Pasirašytas prašymas</p>
             {canEditSignedRequest ? (
@@ -251,7 +258,7 @@ function VacationDetailsPanel({
         ) : null}
       </form>
 
-      {isManager ? (
+      {isManager && !isIllness ? (
         <div className="action-grid">
           <button
             type="button"
@@ -268,6 +275,19 @@ function VacationDetailsPanel({
             disabled={loading || vacation.status === 'rejected'}
           >
             Atmesti
+          </button>
+        </div>
+      ) : null}
+
+      {isManager && isIllness ? (
+        <div className="action-grid single-action">
+          <button
+            type="button"
+            className="reject-btn"
+            onClick={() => onReject()}
+            disabled={loading || vacation.status === 'rejected'}
+          >
+            Pašalinti įrašą
           </button>
         </div>
       ) : null}

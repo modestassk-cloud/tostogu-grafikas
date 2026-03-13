@@ -13,6 +13,7 @@ import GanttChart from '../components/GanttChart';
 import VacationDetailsPanel from '../components/VacationDetailsPanel';
 import VacationFormModal from '../components/VacationFormModal';
 import logo from '../assets/eigida-logo.svg';
+import { ENTRY_TYPES, isIllnessEntry } from '../entryTypes';
 import { shiftAnchorDate, shiftIsoDate } from '../utilsDate';
 
 function utcMonthAnchorNow() {
@@ -217,7 +218,11 @@ function VacationDashboard({ isManager }) {
         department: activeDepartment,
       });
       setShowModal(false);
-      flashMessage(`Prašymas pateiktas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
+      flashMessage(
+        payload.entryType === ENTRY_TYPES.ILLNESS
+          ? `Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`
+          : `Atostogų prašymas pateiktas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
+      );
       await loadVacations();
     } catch (submitError) {
       setError(submitError.message);
@@ -258,7 +263,9 @@ function VacationDashboard({ isManager }) {
       setSavingAction(true);
       setError('');
       await rejectVacation({ id: selectedVacation.id, managerToken, department: activeDepartment });
-      flashMessage('Atostogų prašymas atmestas.');
+      flashMessage(
+        isIllnessEntry(selectedVacation) ? 'Ligos įrašas pašalintas.' : 'Atostogų prašymas atmestas.',
+      );
       await loadVacations();
     } catch (actionError) {
       setError(actionError.message);
@@ -337,9 +344,9 @@ function VacationDashboard({ isManager }) {
         <img src={logo} alt="Eigida" className="logo" />
 
         <div className="sidebar-title-block">
-          <h1>Atostogų planavimo platforma</h1>
+          <h1>Atostogų ir ligų grafikas</h1>
           <p>
-            Vizualus kalendorius komandoms, kad vadovas vienu žvilgsniu matytų užimtumą ir
+            Vizualus kalendorius komandoms, kad vadovas vienu žvilgsniu matytų atostogas, ligas ir
             persidengimus.
           </p>
         </div>
@@ -384,7 +391,7 @@ function VacationDashboard({ isManager }) {
         </div>
 
         <button type="button" className="primary-btn wide" onClick={() => setShowModal(true)}>
-          Pridėti atostogas
+          Pridėti įrašą
         </button>
 
         <div className="pill-row">
@@ -404,7 +411,8 @@ function VacationDashboard({ isManager }) {
           </label>
         ) : (
           <p className="small-note">
-            Pateikti prašymai pirmiausia rodomi kaip <strong>laukiantys patvirtinimo</strong>.
+            Atostogų prašymai pirmiausia rodomi kaip <strong>laukiantys patvirtinimo</strong>, o
+            ligos įrašai grafike atsiranda iš karto.
           </p>
         )}
 
@@ -414,7 +422,7 @@ function VacationDashboard({ isManager }) {
 
       <main className="main-content">
         {loadingData ? (
-          <div className="loading-card">Kraunami atostogų duomenys...</div>
+          <div className="loading-card">Kraunami grafiko įrašai...</div>
         ) : (
           <GanttChart
             vacations={vacations}

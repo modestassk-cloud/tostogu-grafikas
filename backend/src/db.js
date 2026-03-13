@@ -8,6 +8,10 @@ const VACATION_STATUSES = Object.freeze({
   APPROVED: 'approved',
   REJECTED: 'rejected',
 });
+const ENTRY_TYPES = Object.freeze({
+  VACATION: 'vacation',
+  ILLNESS: 'illness',
+});
 
 const DEPARTMENTS = Object.freeze({
   PRODUCTION: 'gamyba',
@@ -36,6 +40,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     employee_name TEXT NOT NULL,
     department TEXT NOT NULL DEFAULT 'gamyba',
+    entry_type TEXT NOT NULL DEFAULT 'vacation' CHECK(entry_type IN ('vacation', 'illness')),
     start_date TEXT NOT NULL,
     end_date TEXT NOT NULL,
     signed_request_received INTEGER NOT NULL DEFAULT 0,
@@ -54,6 +59,7 @@ db.exec(`
 
 const vacationColumns = db.prepare('PRAGMA table_info(vacations)').all();
 const hasDepartmentColumn = vacationColumns.some((column) => column.name === 'department');
+const hasEntryTypeColumn = vacationColumns.some((column) => column.name === 'entry_type');
 const hasSignedRequestReceivedColumn = vacationColumns.some(
   (column) => column.name === 'signed_request_received',
 );
@@ -68,6 +74,13 @@ if (!hasDepartmentColumn) {
   db.exec(`
     ALTER TABLE vacations
     ADD COLUMN department TEXT NOT NULL DEFAULT 'gamyba';
+  `);
+}
+
+if (!hasEntryTypeColumn) {
+  db.exec(`
+    ALTER TABLE vacations
+    ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'vacation';
   `);
 }
 
@@ -98,12 +111,17 @@ db.exec(`
   WHERE department IS NULL OR TRIM(department) = '';
 
   UPDATE vacations
+  SET entry_type = 'vacation'
+  WHERE entry_type IS NULL OR TRIM(entry_type) = '';
+
+  UPDATE vacations
   SET signed_request_received = 0
   WHERE signed_request_received IS NULL;
 
   CREATE INDEX IF NOT EXISTS idx_vacations_dates ON vacations (start_date, end_date);
   CREATE INDEX IF NOT EXISTS idx_vacations_status ON vacations (status);
   CREATE INDEX IF NOT EXISTS idx_vacations_department ON vacations (department);
+  CREATE INDEX IF NOT EXISTS idx_vacations_entry_type ON vacations (entry_type);
 `);
 
 function normalizeDepartment(value) {
@@ -119,6 +137,19 @@ function toDepartmentOrDefault(value, fallback = DEPARTMENTS.PRODUCTION) {
   return isValidDepartment(normalized) ? normalized : fallback;
 }
 
+function normalizeEntryType(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEntryType(value) {
+  return Object.values(ENTRY_TYPES).includes(normalizeEntryType(value));
+}
+
+function toEntryTypeOrDefault(value, fallback = ENTRY_TYPES.VACATION) {
+  const normalized = normalizeEntryType(value);
+  return isValidEntryType(normalized) ? normalized : fallback;
+}
+
 function rowToVacation(row) {
   if (!row) return null;
 
@@ -126,6 +157,7 @@ function rowToVacation(row) {
     id: row.id,
     employeeName: row.employee_name,
     department: row.department,
+    entryType: toEntryTypeOrDefault(row.entry_type),
     startDate: row.start_date,
     endDate: row.end_date,
     signedRequestReceived: Number(row.signed_request_received) === 1,
@@ -222,6 +254,7 @@ function listVacations({ department, includeRejected = false } = {}) {
         id,
         employee_name,
         department,
+        entry_type,
         start_date,
         end_date,
         signed_request_received,
@@ -248,6 +281,7 @@ function getVacationById(id) {
         id,
         employee_name,
         department,
+        entry_type,
         start_date,
         end_date,
         signed_request_received,
@@ -265,10 +299,15 @@ function getVacationById(id) {
   return rowToVacation(row);
 }
 
-function createVacation({ employeeName, department, startDate, endDate }) {
+function createVacation({ employeeName, department, entryType, startDate, endDate }) {
   const id = generateId();
   const createdAt = nowIso();
   const normalizedDepartment = toDepartmentOrDefault(department);
+  const normalizedEntryType = toEntryTypeOrDefault(entryType);
+  const initialStatus =
+    normalizedEntryType === ENTRY_TYPES.ILLNESS
+      ? VACATION_STATUSES.APPROVED
+      : VACATION_STATUSES.PENDING;
 
   db.prepare(
     `
@@ -276,6 +315,7 @@ function createVacation({ employeeName, department, startDate, endDate }) {
       id,
       employee_name,
       department,
+      entry_type,
       start_date,
       end_date,
       signed_request_received,
@@ -284,18 +324,19 @@ function createVacation({ employeeName, department, startDate, endDate }) {
       status,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     id,
     employeeName,
     normalizedDepartment,
+    normalizedEntryType,
     startDate,
     endDate,
     0,
     null,
     null,
-    VACATION_STATUSES.PENDING,
+    initialStatus,
     createdAt,
     createdAt,
   );
@@ -315,6 +356,11 @@ function updateVacation(id, updates) {
   if (typeof updates.department === 'string') {
     updateFields.push('department = ?');
     values.push(toDepartmentOrDefault(updates.department));
+  }
+
+  if (typeof updates.entryType === 'string') {
+    updateFields.push('entry_type = ?');
+    values.push(toEntryTypeOrDefault(updates.entryType));
   }
 
   if (typeof updates.startDate === 'string') {
@@ -366,11 +412,14 @@ function updateVacation(id, updates) {
 
 module.exports = {
   VACATION_STATUSES,
+  ENTRY_TYPES,
   DEPARTMENTS,
   ALL_DEPARTMENTS,
   dbPath: DB_PATH,
   isValidDepartment,
   toDepartmentOrDefault,
+  isValidEntryType,
+  toEntryTypeOrDefault,
   getOrCreateManagerTokens,
   listVacations,
   createVacation,
