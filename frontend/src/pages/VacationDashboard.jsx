@@ -345,10 +345,6 @@ function VacationDashboard({ isManager }) {
 
         <div className="sidebar-title-block">
           <h1>Atostogų ir ligų grafikas</h1>
-          <p>
-            Vizualus kalendorius komandoms, kad vadovas vienu žvilgsniu matytų atostogas, ligas ir
-            persidengimus.
-          </p>
         </div>
 
         <div className="department-switch">
