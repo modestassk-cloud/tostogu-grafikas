@@ -82,40 +82,43 @@ function buildRows(vacations, employees, rangeStart, rangeEnd, dayWidth) {
       return rows;
     }, new Map());
 
-  return [...knownRows, ...Array.from(orphanedRows.values())].map((row) => {
-    const withLanes = assignLanes(row.employeeVacations);
-    const visibleBars = withLanes
-      .map((vacation) => {
-        const startDate = parseIsoDate(vacation.startDate);
-        const endDate = parseIsoDate(vacation.endDate);
-        const clamped = clampInterval(startDate, endDate, rangeStart, rangeEnd);
+  return [...knownRows, ...Array.from(orphanedRows.values())]
+    .map((row) => {
+      const withLanes = assignLanes(row.employeeVacations);
+      const visibleBars = withLanes
+        .map((vacation) => {
+          const startDate = parseIsoDate(vacation.startDate);
+          const endDate = parseIsoDate(vacation.endDate);
+          const clamped = clampInterval(startDate, endDate, rangeStart, rangeEnd);
 
-        if (!clamped) {
-          return null;
-        }
+          if (!clamped) {
+            return null;
+          }
 
-        const left = differenceInDays(rangeStart, clamped.clampedStart) * dayWidth;
-        const width = (differenceInDays(clamped.clampedStart, clamped.clampedEnd) + 1) * dayWidth;
+          const left = differenceInDays(rangeStart, clamped.clampedStart) * dayWidth;
+          const width =
+            (differenceInDays(clamped.clampedStart, clamped.clampedEnd) + 1) * dayWidth;
 
-        return {
-          vacation,
-          lane: vacation.lane,
-          left,
-          width,
-        };
-      })
-      .filter(Boolean);
+          return {
+            vacation,
+            lane: vacation.lane,
+            left,
+            width,
+          };
+        })
+        .filter(Boolean);
 
-    const laneCount = withLanes.reduce((max, item) => Math.max(max, item.lane + 1), 1);
+      const laneCount = withLanes.reduce((max, item) => Math.max(max, item.lane + 1), 1);
 
-    return {
-      employeeName: row.employeeName,
-      rowKey: row.rowKey,
-      bars: visibleBars,
-      laneCount,
-      recordCount: row.employeeVacations.length,
-    };
-  });
+      return {
+        employeeName: row.employeeName,
+        rowKey: row.rowKey,
+        bars: visibleBars,
+        laneCount,
+        recordCount: row.employeeVacations.length,
+      };
+    })
+    .filter((row) => row.bars.length > 0);
 }
 
 function VacationBar({
