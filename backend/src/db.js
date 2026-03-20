@@ -12,6 +12,10 @@ const ENTRY_TYPES = Object.freeze({
   VACATION: 'vacation',
   ILLNESS: 'illness',
 });
+const EMPLOYEE_SOURCES = Object.freeze({
+  MANUAL: 'manual',
+  IMPORTED: 'imported',
+});
 
 const DEPARTMENTS = Object.freeze({
   PRODUCTION: 'gamyba',
@@ -57,6 +61,7 @@ db.exec(`
     full_name TEXT NOT NULL,
     full_name_normalized TEXT NOT NULL,
     department TEXT NOT NULL DEFAULT 'gamyba',
+    source TEXT NOT NULL DEFAULT 'manual',
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -89,6 +94,7 @@ const hasEmployeeFullNameNormalizedColumn = employeeColumns.some(
 const hasEmployeeIsActiveColumn = employeeColumns.some((column) => column.name === 'is_active');
 const hasEmployeeCreatedAtColumn = employeeColumns.some((column) => column.name === 'created_at');
 const hasEmployeeUpdatedAtColumn = employeeColumns.some((column) => column.name === 'updated_at');
+const hasEmployeeSourceColumn = employeeColumns.some((column) => column.name === 'source');
 
 if (!hasEmployeeIdColumn) {
   db.exec(`
@@ -122,6 +128,13 @@ if (!hasEmployeeUpdatedAtColumn) {
   db.exec(`
     ALTER TABLE employees
     ADD COLUMN updated_at TEXT;
+  `);
+}
+
+if (!hasEmployeeSourceColumn) {
+  db.exec(`
+    ALTER TABLE employees
+    ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';
   `);
 }
 
@@ -188,6 +201,26 @@ db.exec(`
   UPDATE employees
   SET updated_at = COALESCE(updated_at, created_at, '${new Date(0).toISOString()}')
   WHERE updated_at IS NULL OR TRIM(updated_at) = '';
+`);
+
+if (!hasEmployeeSourceColumn) {
+  db.exec(`
+    UPDATE employees
+    SET source = CASE
+      WHEN EXISTS (
+        SELECT 1
+        FROM vacations
+        WHERE vacations.employee_id = employees.id
+      ) THEN 'imported'
+      ELSE 'manual'
+    END;
+  `);
+}
+
+db.exec(`
+  UPDATE employees
+  SET source = 'manual'
+  WHERE source IS NULL OR TRIM(source) = '';
 
   CREATE INDEX IF NOT EXISTS idx_vacations_dates ON vacations (start_date, end_date);
   CREATE INDEX IF NOT EXISTS idx_vacations_status ON vacations (status);
@@ -198,6 +231,8 @@ db.exec(`
     ON employees (department, full_name_normalized);
   CREATE INDEX IF NOT EXISTS idx_employees_department_active
     ON employees (department, is_active);
+  CREATE INDEX IF NOT EXISTS idx_employees_source
+    ON employees (source);
 `);
 
 function normalizeDepartment(value) {
@@ -234,6 +269,19 @@ function normalizeEmployeeLookupKey(value) {
   return normalizePersonName(value).toLowerCase();
 }
 
+function normalizeEmployeeSource(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEmployeeSource(value) {
+  return Object.values(EMPLOYEE_SOURCES).includes(normalizeEmployeeSource(value));
+}
+
+function toEmployeeSourceOrDefault(value, fallback = EMPLOYEE_SOURCES.MANUAL) {
+  const normalized = normalizeEmployeeSource(value);
+  return isValidEmployeeSource(normalized) ? normalized : fallback;
+}
+
 function rowToVacation(row) {
   if (!row) return null;
 
@@ -261,6 +309,7 @@ function rowToEmployee(row) {
     id: row.id,
     fullName: row.full_name,
     department: row.department,
+    source: toEmployeeSourceOrDefault(row.source),
     isActive: Number(row.is_active) === 1,
     recordsCount: Number(row.records_count || 0),
     createdAt: row.created_at,
@@ -326,10 +375,11 @@ const backfillEmployeesFromVacations = db.transaction(() => {
         full_name,
         full_name_normalized,
         department,
+        source,
         is_active,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
   );
   const linkVacationsStatement = db.prepare(
@@ -356,7 +406,16 @@ const backfillEmployeesFromVacations = db.transaction(() => {
     if (!employee) {
       const createdAt = nowIso();
       const id = generateId();
-      insertEmployeeStatement.run(id, fullName, lookupKey, department, 1, createdAt, createdAt);
+      insertEmployeeStatement.run(
+        id,
+        fullName,
+        lookupKey,
+        department,
+        EMPLOYEE_SOURCES.IMPORTED,
+        1,
+        createdAt,
+        createdAt,
+      );
       employee = { id };
     }
 
@@ -590,7 +649,7 @@ function updateVacation(id, updates) {
   return getVacationById(id);
 }
 
-function listEmployees({ department, includeInactive = false } = {}) {
+function listEmployees({ department, includeInactive = false, includeImported = true } = {}) {
   const conditions = [];
   const values = [];
 
@@ -603,6 +662,11 @@ function listEmployees({ department, includeInactive = false } = {}) {
     conditions.push('employees.is_active = 1');
   }
 
+  if (!includeImported) {
+    conditions.push('employees.source = ?');
+    values.push(EMPLOYEE_SOURCES.MANUAL);
+  }
+
   const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = db
     .prepare(
@@ -611,6 +675,7 @@ function listEmployees({ department, includeInactive = false } = {}) {
         employees.id,
         employees.full_name,
         employees.department,
+        employees.source,
         employees.is_active,
         employees.created_at,
         employees.updated_at,
@@ -620,7 +685,13 @@ function listEmployees({ department, includeInactive = false } = {}) {
         ON vacations.employee_id = employees.id
       ${whereSql}
       GROUP BY employees.id
-      ORDER BY employees.is_active DESC, employees.full_name COLLATE NOCASE ASC
+      ORDER BY
+        CASE employees.source
+          WHEN 'manual' THEN 0
+          ELSE 1
+        END,
+        employees.is_active DESC,
+        employees.full_name COLLATE NOCASE ASC
     `,
     )
     .all(...values);
@@ -636,6 +707,7 @@ function getEmployeeById(id) {
         employees.id,
         employees.full_name,
         employees.department,
+        employees.source,
         employees.is_active,
         employees.created_at,
         employees.updated_at,
@@ -666,6 +738,7 @@ function findEmployeeByName({ department, fullName }) {
         employees.id,
         employees.full_name,
         employees.department,
+        employees.source,
         employees.is_active,
         employees.created_at,
         employees.updated_at,
@@ -682,7 +755,7 @@ function findEmployeeByName({ department, fullName }) {
   return rowToEmployee(row);
 }
 
-function createEmployee({ fullName, department, isActive = true }) {
+function createEmployee({ fullName, department, isActive = true, source = EMPLOYEE_SOURCES.MANUAL }) {
   const normalizedFullName = normalizePersonName(fullName);
   const lookupKey = normalizeEmployeeLookupKey(normalizedFullName);
   const normalizedDepartment = toDepartmentOrDefault(department);
@@ -702,16 +775,18 @@ function createEmployee({ fullName, department, isActive = true }) {
         full_name,
         full_name_normalized,
         department,
+        source,
         is_active,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     id,
     normalizedFullName,
     lookupKey,
     normalizedDepartment,
+    toEmployeeSourceOrDefault(source),
     isActive ? 1 : 0,
     createdAt,
     createdAt,
@@ -741,6 +816,11 @@ const updateEmployeeRecord = db.transaction((id, updates) => {
   if (typeof updates.isActive === 'boolean') {
     updateFields.push('is_active = ?');
     values.push(updates.isActive ? 1 : 0);
+  }
+
+  if (typeof updates.source === 'string') {
+    updateFields.push('source = ?');
+    values.push(toEmployeeSourceOrDefault(updates.source));
   }
 
   if (!updateFields.length) {
@@ -779,6 +859,7 @@ function updateEmployee(id, updates) {
 module.exports = {
   VACATION_STATUSES,
   ENTRY_TYPES,
+  EMPLOYEE_SOURCES,
   DEPARTMENTS,
   ALL_DEPARTMENTS,
   dbPath: DB_PATH,
@@ -786,6 +867,7 @@ module.exports = {
   toDepartmentOrDefault,
   isValidEntryType,
   toEntryTypeOrDefault,
+  isValidEmployeeSource,
   getOrCreateManagerTokens,
   listVacations,
   createVacation,

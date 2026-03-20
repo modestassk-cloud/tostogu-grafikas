@@ -874,6 +874,16 @@ button:disabled {
   padding-right: 4px;
 }
 
+.employee-section {
+  display: grid;
+  gap: 10px;
+}
+
+.employee-section-header h4 {
+  margin: 0 0 4px;
+  color: var(--brand-deep);
+}
+
 .employee-card {
   border-radius: 16px;
   border: 1px solid var(--line);
@@ -891,6 +901,11 @@ button:disabled {
 .employee-card.inactive {
   border-color: rgba(23, 0, 10, 0.16);
   background: linear-gradient(180deg, rgba(248, 247, 247, 0.96), rgba(255, 255, 255, 1));
+}
+
+.employee-card.imported {
+  border-style: dashed;
+  background: linear-gradient(180deg, rgba(245, 164, 22, 0.08), rgba(255, 255, 255, 1));
 }
 
 .employee-card-top {

@@ -43,6 +43,14 @@ function EmployeeCenterModal({
       ),
     [employees],
   );
+  const cardEmployees = useMemo(
+    () => sortedEmployees.filter((employee) => employee.source !== 'imported'),
+    [sortedEmployees],
+  );
+  const importedEmployees = useMemo(
+    () => sortedEmployees.filter((employee) => employee.source === 'imported'),
+    [sortedEmployees],
+  );
 
   if (!isOpen) {
     return null;
@@ -89,6 +97,73 @@ function EmployeeCenterModal({
     }
   };
 
+  const handlePromoteImportedEmployee = async (employee) => {
+    setError('');
+    try {
+      await onUpdateEmployee(employee.id, { source: 'manual', isActive: true });
+    } catch (submitError) {
+      setError(submitError.message);
+    }
+  };
+
+  const renderEmployeeCard = (employee, { imported = false } = {}) => (
+    <article
+      key={employee.id}
+      className={`employee-card ${employee.isActive ? 'active' : 'inactive'} ${imported ? 'imported' : ''}`}
+    >
+      <div className="employee-card-top">
+        <span className={`status-chip ${employee.isActive ? 'status-approved' : 'status-rejected'}`}>
+          {employee.isActive ? 'Aktyvus' : 'Archyvuotas'}
+        </span>
+        <span className="employee-card-meta">{employee.recordsCount} įraš.</span>
+      </div>
+
+      <label>
+        Darbuotojo vardas
+        <input
+          type="text"
+          value={draftNames[employee.id] || ''}
+          onChange={(event) =>
+            setDraftNames((current) => ({
+              ...current,
+              [employee.id]: event.target.value,
+            }))
+          }
+          disabled={loading}
+        />
+      </label>
+
+      <div className="employee-card-actions">
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={() => handleSaveEmployee(employee.id)}
+          disabled={loading}
+        >
+          Pervadinti
+        </button>
+        {imported ? (
+          <button
+            type="button"
+            className="approve-btn"
+            onClick={() => handlePromoteImportedEmployee(employee)}
+            disabled={loading}
+          >
+            Paversti kortele
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={employee.isActive ? 'reject-btn' : 'approve-btn'}
+          onClick={() => handleToggleEmployee(employee)}
+          disabled={loading}
+        >
+          {employee.isActive ? 'Archyvuoti' : 'Atkurti'}
+        </button>
+      </div>
+    </article>
+  );
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Darbuotojų centras">
       <div className="modal-card employee-center-modal">
@@ -120,65 +195,46 @@ function EmployeeCenterModal({
 
         {error ? <p className="form-error">{error}</p> : null}
 
-        <div className="employee-card-grid">
-          {sortedEmployees.length ? (
-            sortedEmployees.map((employee) => (
-              <article
-                key={employee.id}
-                className={`employee-card ${employee.isActive ? 'active' : 'inactive'}`}
-              >
-                <div className="employee-card-top">
-                  <span className={`status-chip ${employee.isActive ? 'status-approved' : 'status-rejected'}`}>
-                    {employee.isActive ? 'Aktyvus' : 'Archyvuotas'}
-                  </span>
-                  <span className="employee-card-meta">{employee.recordsCount} įraš.</span>
-                </div>
+        <section className="employee-section">
+          <header className="employee-section-header">
+            <h4>Darbuotojų kortelės</h4>
+            <p className="panel-note">Tik šis sąrašas rodomas atostogų ir ligų formoje.</p>
+          </header>
+          <div className="employee-card-grid">
+            {cardEmployees.length ? (
+              cardEmployees.map((employee) => renderEmployeeCard(employee))
+            ) : (
+              <div className="employee-empty-state">
+                <h4>Kortelių dar nėra</h4>
+                <p className="panel-note">
+                  Pridėkite pirmą darbuotojo kortelę arba paverskite importuotą vardą kortele.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
 
-                <label>
-                  Darbuotojo vardas
-                  <input
-                    type="text"
-                    value={draftNames[employee.id] || ''}
-                    onChange={(event) =>
-                      setDraftNames((current) => ({
-                        ...current,
-                        [employee.id]: event.target.value,
-                      }))
-                    }
-                    disabled={loading}
-                  />
-                </label>
-
-                <div className="employee-card-actions">
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => handleSaveEmployee(employee.id)}
-                    disabled={loading}
-                  >
-                    Pervadinti
-                  </button>
-                  <button
-                    type="button"
-                    className={employee.isActive ? 'reject-btn' : 'approve-btn'}
-                    onClick={() => handleToggleEmployee(employee)}
-                    disabled={loading}
-                  >
-                    {employee.isActive ? 'Archyvuoti' : 'Atkurti'}
-                  </button>
-                </div>
-              </article>
-            ))
-          ) : (
+        <section className="employee-section">
+          <header className="employee-section-header">
+            <h4>Importuoti seni vardai</h4>
+            <p className="panel-note">
+              Šie vardai atėjo iš istorinių įrašų. Jie formoje nerodomi, kol jų nepaversite
+              darbuotojų kortelėmis.
+            </p>
+          </header>
+          <div className="employee-card-grid">
+            {importedEmployees.length ? (
+              importedEmployees.map((employee) => renderEmployeeCard(employee, { imported: true }))
+            ) : (
             <div className="employee-empty-state">
-              <h4>Darbuotojų dar nėra</h4>
+              <h4>Importuotų vardų nėra</h4>
               <p className="panel-note">
-                Pridėkite pirmą darbuotoją, kad atostogų ir ligų įrašai būtų pildomi iš vieningo
-                sąrašo.
+                Visi rodomi darbuotojai jau yra tvarkingos kortelės.
               </p>
             </div>
-          )}
-        </div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

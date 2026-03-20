@@ -38,10 +38,21 @@ export async function fetchEmployees({
   managerToken,
   department,
   includeInactive = false,
+  includeImported = false,
 } = {}) {
   if (managerToken && department) {
-    const query = includeInactive ? '?includeInactive=true' : '';
-    const payload = await request(`/api/manager/${department}/employees${query}`, { managerToken });
+    const query = new URLSearchParams();
+    if (includeInactive) {
+      query.set('includeInactive', 'true');
+    }
+    if (includeImported) {
+      query.set('includeImported', 'true');
+    }
+    const queryString = query.toString();
+    const payload = await request(
+      `/api/manager/${department}/employees${queryString ? `?${queryString}` : ''}`,
+      { managerToken },
+    );
     return payload.employees || [];
   }
 

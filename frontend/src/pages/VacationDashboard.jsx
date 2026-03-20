@@ -90,11 +90,15 @@ function VacationDashboard({ isManager }) {
     () => vacations.find((vacation) => vacation.id === selectedVacationId) || null,
     [selectedVacationId, vacations],
   );
-  const formEmployees = useMemo(
-    () => employees.filter((employee) => employee.isActive),
+  const cardEmployees = useMemo(
+    () => employees.filter((employee) => employee.source !== 'imported'),
     [employees],
   );
-  const detailsEmployees = isManager ? employees : formEmployees;
+  const formEmployees = useMemo(
+    () => cardEmployees.filter((employee) => employee.isActive),
+    [cardEmployees],
+  );
+  const detailsEmployees = formEmployees;
 
   const flashMessage = (text) => {
     setMessage(text);
@@ -123,6 +127,7 @@ function VacationDashboard({ isManager }) {
           managerToken: isManager ? managerToken : undefined,
           department: activeDepartment,
           includeInactive: isManager,
+          includeImported: isManager,
         }),
       ]);
 
@@ -486,6 +491,13 @@ function VacationDashboard({ isManager }) {
         <p className="small-note">
           Aktyvūs darbuotojai šiame padalinyje: <strong>{formEmployees.length}</strong>
         </p>
+
+        {isManager && !formEmployees.length ? (
+          <p className="small-note">
+            Formoje matysis tik <strong>darbuotojų kortelės</strong>. Jei sąrašas tuščias,
+            atsidarykite darbuotojų centrą ir pažymėkite tinkamus darbuotojus kaip korteles.
+          </p>
+        ) : null}
 
         <div className="pill-row">
           <span className={`mode-pill ${isManager ? 'manager' : 'employee'}`}>

@@ -9,10 +9,12 @@ const { createEmailNotifierFromEnv } = require('./notifications');
 const {
   VACATION_STATUSES,
   ENTRY_TYPES,
+  EMPLOYEE_SOURCES,
   DEPARTMENTS,
   dbPath,
   isValidDepartment,
   isValidEntryType,
+  isValidEmployeeSource,
   getOrCreateManagerTokens,
   listVacations,
   createVacation,
@@ -331,7 +333,7 @@ function getDepartmentLabel(department) {
 
 function resolveEmployeeSelectionOrSendError(
   res,
-  { department, employeeId, employeeName, allowInactive = false },
+  { department, employeeId, employeeName, allowInactive = false, allowImported = false },
 ) {
   const normalizedEmployeeId = sanitizeId(employeeId);
   if (normalizedEmployeeId) {
@@ -343,6 +345,11 @@ function resolveEmployeeSelectionOrSendError(
 
     if (!allowInactive && !employee.isActive) {
       res.status(400).json({ error: 'Pasirinktas darbuotojas neaktyvus. Pasirinkite kitą iš sąrašo.' });
+      return null;
+    }
+
+    if (!allowImported && employee.source === EMPLOYEE_SOURCES.IMPORTED) {
+      res.status(400).json({ error: 'Pasirinktas vardas yra tik istorinis importas, o ne darbuotojo kortelė.' });
       return null;
     }
 
@@ -358,6 +365,11 @@ function resolveEmployeeSelectionOrSendError(
   const employee = findEmployeeByName({ department, fullName: cleanedName });
   if (!employee || (!allowInactive && !employee.isActive)) {
     res.status(400).json({ error: 'Pasirinktas darbuotojas sąraše nerastas.' });
+    return null;
+  }
+
+  if (!allowImported && employee.source === EMPLOYEE_SOURCES.IMPORTED) {
+    res.status(400).json({ error: 'Pasirinktas vardas yra tik istorinis importas, o ne darbuotojo kortelė.' });
     return null;
   }
 
@@ -569,7 +581,7 @@ app.get('/api/employees', (req, res) => {
     return;
   }
 
-  const employees = listEmployees({ department, includeInactive: false });
+  const employees = listEmployees({ department, includeInactive: false, includeImported: false });
   res.json({ employees });
 });
 
@@ -596,6 +608,7 @@ app.post('/api/vacations', (req, res) => {
     employeeId: req.body.employeeId,
     employeeName: req.body.employeeName,
     allowInactive: false,
+    allowImported: false,
   });
   if (!employee) {
     return;
@@ -644,7 +657,8 @@ app.get('/api/manager/:department/vacations', managerAuth, (req, res) => {
 
 app.get('/api/manager/:department/employees', managerAuth, (req, res) => {
   const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
-  const employees = listEmployees({ department: req.department, includeInactive });
+  const includeImported = String(req.query.includeImported || 'true').toLowerCase() !== 'false';
+  const employees = listEmployees({ department: req.department, includeInactive, includeImported });
   res.json({ employees });
 });
 
@@ -694,6 +708,13 @@ app.patch('/api/manager/:department/employees/:id', managerAuth, (req, res) => {
       return res.status(400).json({ error: 'isActive turi būti true/false.' });
     }
     updates.isActive = req.body.isActive;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'source')) {
+    if (!isValidEmployeeSource(req.body.source)) {
+      return res.status(400).json({ error: 'source turi būti manual arba imported.' });
+    }
+    updates.source = req.body.source;
   }
 
   const employee = updateEmployee(existing.id, updates);
