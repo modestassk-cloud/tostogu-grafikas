@@ -852,6 +852,78 @@ button:disabled {
   gap: 8px;
 }
 
+.employee-center-modal {
+  width: min(920px, 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.employee-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.employee-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  max-height: min(58vh, 640px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.employee-card {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(248, 251, 249, 0.96), rgba(255, 255, 255, 1));
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.employee-card.active {
+  border-color: rgba(0, 134, 73, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(0, 134, 73, 0.05);
+}
+
+.employee-card.inactive {
+  border-color: rgba(23, 0, 10, 0.16);
+  background: linear-gradient(180deg, rgba(248, 247, 247, 0.96), rgba(255, 255, 255, 1));
+}
+
+.employee-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.employee-card-meta {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.employee-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.employee-empty-state {
+  border-radius: 16px;
+  border: 1px dashed var(--line-strong);
+  background: rgba(248, 251, 249, 0.8);
+  padding: 22px;
+}
+
+.employee-empty-state h4 {
+  margin: 0 0 8px;
+  color: var(--brand-deep);
+}
+
 @media (max-width: 1360px) {
   .app-shell {
     grid-template-columns: 280px minmax(0, 1fr);
@@ -891,5 +963,9 @@ button:disabled {
   .name-cell {
     width: 170px;
     min-width: 170px;
+  }
+
+  .employee-create-form {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const { createHmac, timingSafeEqual } = require('crypto');
 const cors = require('cors');
 const express = require('express');
 const fs = require('fs');
@@ -17,6 +18,11 @@ const {
   createVacation,
   getVacationById,
   updateVacation,
+  listEmployees,
+  getEmployeeById,
+  findEmployeeByName,
+  createEmployee,
+  updateEmployee,
 } = require('./db');
 
 const app = express();
@@ -43,13 +49,15 @@ const SIGNED_REQUEST_REMINDER_INTERVAL_MS = Number(
   process.env.SIGNED_REQUEST_REMINDER_INTERVAL_MS || 60 * 60 * 1000,
 );
 const INTEGRATION_TOKEN_HEADER = 'x-integration-token';
-const integrationAllowedPaths = new Set(['/api/vacations']);
 const integrationTokens = new Set(
   String(process.env.INTEGRATION_TOKENS || '')
     .split(',')
     .map((token) => String(token || '').trim())
     .filter(Boolean),
 );
+const PLATFORM_AUTH_SECRET = String(process.env.PLATFORM_AUTH_SECRET || '').trim();
+const PLATFORM_MODULE_KEY = 'vacations';
+const PLATFORM_MANAGE_LEVELS = new Set(['manage', 'admin']);
 
 function normalizeIpAddress(rawValue) {
   const value = String(rawValue || '').trim();
@@ -67,6 +75,103 @@ function parseAllowedIps(rawValue) {
 
 function uniqueItems(items) {
   return Array.from(new Set(items.filter(Boolean)));
+}
+
+function safeCompare(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right || ''), 'utf8');
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function extractIntegrationToken(req) {
+  const explicitToken = String(req.get(INTEGRATION_TOKEN_HEADER) || '').trim();
+  if (explicitToken) {
+    return explicitToken;
+  }
+
+  const authorization = String(req.get('authorization') || '').trim();
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (match) {
+    return String(match[1] || '').trim();
+  }
+
+  const queryToken = String(req.query?.integration_token || req.query?.integrationToken || '').trim();
+  if (queryToken) {
+    return queryToken;
+  }
+
+  return '';
+}
+
+function isIntegrationAllowedPath(requestPath) {
+  const normalizedPath = String(requestPath || '').trim();
+  return normalizedPath === '/api/vacations' || normalizedPath.startsWith('/api/vacations/');
+}
+
+function signPlatformPayload(payloadBase64) {
+  return createHmac('sha256', PLATFORM_AUTH_SECRET).update(payloadBase64).digest('base64url');
+}
+
+function verifyPlatformSessionToken(token) {
+  if (!PLATFORM_AUTH_SECRET) {
+    return null;
+  }
+
+  const [payloadBase64, signature] = String(token || '').split('.');
+  if (!payloadBase64 || !signature) {
+    return null;
+  }
+
+  const expected = signPlatformPayload(payloadBase64);
+  if (!safeCompare(signature, expected)) {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString('utf8'));
+  } catch (error) {
+    return null;
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const expiresAt = Number(payload.exp || 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+
+  const modulePermissions =
+    payload.module_permissions && typeof payload.module_permissions === 'object'
+      ? payload.module_permissions
+      : {};
+  const vacationsPermission = String(modulePermissions[PLATFORM_MODULE_KEY] || 'none')
+    .trim()
+    .toLowerCase();
+  if (!PLATFORM_MANAGE_LEVELS.has(vacationsPermission)) {
+    return null;
+  }
+
+  const departmentCodes = Array.isArray(payload.department_codes)
+    ? payload.department_codes
+        .map((value) => normalizeDepartment(value))
+        .filter((value) => isValidDepartment(value))
+    : [];
+
+  return {
+    email: String(payload.email || '').trim().toLowerCase() || null,
+    roles: Array.isArray(payload.roles)
+      ? payload.roles.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+      : [],
+    departmentCodes: uniqueItems(departmentCodes),
+    canManageAllDepartments: Boolean(payload.can_manage_all_departments || payload.is_super_admin),
+    permissionLevel: vacationsPermission,
+  };
 }
 
 const defaultAllowedIps = ['85.206.86.184'];
@@ -104,8 +209,8 @@ function ipAllowlistMiddleware(req, res, next) {
     return next();
   }
 
-  if (integrationAllowedPaths.has(req.path) && integrationTokens.size > 0) {
-    const providedIntegrationToken = String(req.get(INTEGRATION_TOKEN_HEADER) || '').trim();
+  const providedIntegrationToken = extractIntegrationToken(req);
+  if (isIntegrationAllowedPath(req.path) && integrationTokens.size > 0) {
     if (providedIntegrationToken && integrationTokens.has(providedIntegrationToken)) {
       return next();
     }
@@ -181,6 +286,10 @@ function sanitizeName(input) {
   return String(input || '').trim().replace(/\s{2,}/g, ' ');
 }
 
+function sanitizeId(input) {
+  return String(input || '').trim();
+}
+
 function normalizeDepartment(rawValue) {
   return String(rawValue || '').trim().toLowerCase();
 }
@@ -218,6 +327,41 @@ function parseEntryTypeOrSendError(res, rawValue, fallback = ENTRY_TYPES.VACATIO
 
 function getDepartmentLabel(department) {
   return department === DEPARTMENTS.ADMINISTRATION ? 'Administracija' : 'Gamyba';
+}
+
+function resolveEmployeeSelectionOrSendError(
+  res,
+  { department, employeeId, employeeName, allowInactive = false },
+) {
+  const normalizedEmployeeId = sanitizeId(employeeId);
+  if (normalizedEmployeeId) {
+    const employee = getEmployeeById(normalizedEmployeeId);
+    if (!employee || employee.department !== department) {
+      res.status(400).json({ error: 'Pasirinktas darbuotojas šiame padalinyje nerastas.' });
+      return null;
+    }
+
+    if (!allowInactive && !employee.isActive) {
+      res.status(400).json({ error: 'Pasirinktas darbuotojas neaktyvus. Pasirinkite kitą iš sąrašo.' });
+      return null;
+    }
+
+    return employee;
+  }
+
+  const cleanedName = sanitizeName(employeeName);
+  if (!cleanedName) {
+    res.status(400).json({ error: 'Pasirinkite darbuotoją iš sąrašo.' });
+    return null;
+  }
+
+  const employee = findEmployeeByName({ department, fullName: cleanedName });
+  if (!employee || (!allowInactive && !employee.isActive)) {
+    res.status(400).json({ error: 'Pasirinktas darbuotojas sąraše nerastas.' });
+    return null;
+  }
+
+  return employee;
 }
 
 function parseIsoDateUtc(isoDate) {
@@ -361,6 +505,7 @@ function managerAuth(req, res, next) {
 
   let managerRole = null;
   let managerDepartment = department;
+  let authSource = 'legacy-manager-token';
 
   if (suppliedToken === administrationToken) {
     managerRole = MANAGER_ROLES.ADMIN_SUPER;
@@ -368,7 +513,22 @@ function managerAuth(req, res, next) {
   } else if (suppliedToken === departmentToken) {
     managerRole = MANAGER_ROLES.DEPARTMENT_MANAGER;
   } else {
-    return res.status(401).json({ error: 'Unauthorized manager access.' });
+    const platformSession = verifyPlatformSessionToken(suppliedToken);
+    if (!platformSession) {
+      return res.status(401).json({ error: 'Unauthorized manager access.' });
+    }
+
+    if (platformSession.canManageAllDepartments) {
+      managerRole = MANAGER_ROLES.ADMIN_SUPER;
+      managerDepartment = DEPARTMENTS.ADMINISTRATION;
+    } else if (platformSession.departmentCodes.includes(department)) {
+      managerRole = MANAGER_ROLES.DEPARTMENT_MANAGER;
+    } else {
+      return res.status(403).json({ error: 'Platform session neturi prieigos prie šio padalinio.' });
+    }
+
+    authSource = 'platform-session';
+    req.actorEmail = platformSession.email;
   }
 
   req.department = department;
@@ -376,6 +536,7 @@ function managerAuth(req, res, next) {
   req.managerDepartment = managerDepartment;
   req.canManageAllDepartments = managerRole === MANAGER_ROLES.ADMIN_SUPER;
   req.canEditSignedRequest = managerRole === MANAGER_ROLES.ADMIN_SUPER;
+  req.authSource = authSource;
   next();
 }
 
@@ -402,8 +563,17 @@ app.get('/api/vacations', (req, res) => {
   res.json({ vacations });
 });
 
+app.get('/api/employees', (req, res) => {
+  const department = parseDepartmentOrSendError(res, req.query.department);
+  if (!department) {
+    return;
+  }
+
+  const employees = listEmployees({ department, includeInactive: false });
+  res.json({ employees });
+});
+
 app.post('/api/vacations', (req, res) => {
-  const employeeName = sanitizeName(req.body.employeeName);
   const department = parseDepartmentOrSendError(res, req.body.department);
   const entryType = parseEntryTypeOrSendError(res, req.body.entryType);
   const startDate = String(req.body.startDate || '');
@@ -411,10 +581,6 @@ app.post('/api/vacations', (req, res) => {
 
   if (!department || !entryType) {
     return;
-  }
-
-  if (!employeeName) {
-    return res.status(400).json({ error: 'Privalomas laukas: vardas ir pavardė.' });
   }
 
   if (!isValidIsoDate(startDate) || !isValidIsoDate(endDate)) {
@@ -425,7 +591,24 @@ app.post('/api/vacations', (req, res) => {
     return res.status(400).json({ error: 'Pradžios data negali būti vėlesnė už pabaigos datą.' });
   }
 
-  const created = createVacation({ employeeName, department, entryType, startDate, endDate });
+  const employee = resolveEmployeeSelectionOrSendError(res, {
+    department,
+    employeeId: req.body.employeeId,
+    employeeName: req.body.employeeName,
+    allowInactive: false,
+  });
+  if (!employee) {
+    return;
+  }
+
+  const created = createVacation({
+    employeeId: employee.id,
+    employeeName: employee.fullName,
+    department,
+    entryType,
+    startDate,
+    endDate,
+  });
   if (created.entryType === ENTRY_TYPES.VACATION) {
     notifyAboutNewVacationRequest(created)
       .then((result) => {
@@ -448,6 +631,8 @@ app.get('/api/manager/:department/session', managerAuth, (req, res) => {
     managerRole: req.managerRole,
     canManageAllDepartments: req.canManageAllDepartments,
     canEditSignedRequest: req.canEditSignedRequest,
+    authSource: req.authSource,
+    actorEmail: req.actorEmail || null,
   });
 });
 
@@ -455,6 +640,64 @@ app.get('/api/manager/:department/vacations', managerAuth, (req, res) => {
   const includeRejected = String(req.query.includeRejected || '').toLowerCase() === 'true';
   const vacations = listVacations({ department: req.department, includeRejected });
   res.json({ vacations });
+});
+
+app.get('/api/manager/:department/employees', managerAuth, (req, res) => {
+  const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
+  const employees = listEmployees({ department: req.department, includeInactive });
+  res.json({ employees });
+});
+
+app.post('/api/manager/:department/employees', managerAuth, (req, res) => {
+  const fullName = sanitizeName(req.body.fullName);
+  if (!fullName) {
+    return res.status(400).json({ error: 'Darbuotojo vardas ir pavardė negali būti tušti.' });
+  }
+
+  const existing = findEmployeeByName({ department: req.department, fullName });
+  if (existing) {
+    return res.status(409).json({ error: 'Toks darbuotojas šiame padalinyje jau yra.' });
+  }
+
+  const employee = createEmployee({
+    fullName,
+    department: req.department,
+    isActive: true,
+  });
+  res.status(201).json({ employee });
+});
+
+app.patch('/api/manager/:department/employees/:id', managerAuth, (req, res) => {
+  const existing = getEmployeeById(req.params.id);
+  if (!existing || existing.department !== req.department) {
+    return res.status(404).json({ error: 'Darbuotojas šiame padalinyje nerastas.' });
+  }
+
+  const updates = {};
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'fullName')) {
+    const fullName = sanitizeName(req.body.fullName);
+    if (!fullName) {
+      return res.status(400).json({ error: 'Darbuotojo vardas ir pavardė negali būti tušti.' });
+    }
+
+    const matched = findEmployeeByName({ department: req.department, fullName });
+    if (matched && matched.id !== existing.id) {
+      return res.status(409).json({ error: 'Toks darbuotojas šiame padalinyje jau yra.' });
+    }
+
+    updates.fullName = fullName;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'isActive')) {
+    if (typeof req.body.isActive !== 'boolean') {
+      return res.status(400).json({ error: 'isActive turi būti true/false.' });
+    }
+    updates.isActive = req.body.isActive;
+  }
+
+  const employee = updateEmployee(existing.id, updates);
+  res.json({ employee });
 });
 
 app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
@@ -467,12 +710,22 @@ app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
 
   const updates = {};
 
-  if (Object.prototype.hasOwnProperty.call(req.body, 'employeeName')) {
-    const employeeName = sanitizeName(req.body.employeeName);
-    if (!employeeName) {
-      return res.status(400).json({ error: 'Vardas ir pavardė negali būti tuščias.' });
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, 'employeeId') ||
+    Object.prototype.hasOwnProperty.call(req.body, 'employeeName')
+  ) {
+    const employee = resolveEmployeeSelectionOrSendError(res, {
+      department: req.department,
+      employeeId: req.body.employeeId,
+      employeeName: req.body.employeeName,
+      allowInactive: true,
+    });
+    if (!employee) {
+      return;
     }
-    updates.employeeName = employeeName;
+
+    updates.employeeId = employee.id;
+    updates.employeeName = employee.fullName;
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'startDate')) {

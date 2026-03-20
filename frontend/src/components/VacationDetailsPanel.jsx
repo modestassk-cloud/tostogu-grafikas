@@ -6,6 +6,7 @@ import { getSignedRequestAlert, getVacationStatusView } from '../vacationStatus'
 function VacationDetailsPanel({
   vacation,
   allVacations,
+  employees = [],
   isManager,
   canEditSignedRequest = false,
   loading,
@@ -15,7 +16,7 @@ function VacationDetailsPanel({
   onReject,
   onSave,
 }) {
-  const [employeeName, setEmployeeName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [signedRequestReceived, setSignedRequestReceived] = useState(false);
@@ -23,7 +24,7 @@ function VacationDetailsPanel({
 
   useEffect(() => {
     if (!vacation) {
-      setEmployeeName('');
+      setEmployeeId('');
       setStartDate('');
       setEndDate('');
       setSignedRequestReceived(false);
@@ -31,12 +32,20 @@ function VacationDetailsPanel({
       return;
     }
 
-    setEmployeeName(vacation.employeeName);
+    const matchedEmployee =
+      employees.find((employee) => employee.id === vacation.employeeId) ||
+      employees.find(
+        (employee) =>
+          employee.fullName.trim().toLowerCase() === vacation.employeeName.trim().toLowerCase(),
+      ) ||
+      null;
+
+    setEmployeeId(matchedEmployee?.id || vacation.employeeId || '');
     setStartDate(vacation.startDate);
     setEndDate(vacation.endDate);
     setSignedRequestReceived(Boolean(vacation.signedRequestReceived));
     setError('');
-  }, [vacation]);
+  }, [employees, vacation]);
 
   const vacationList = useMemo(
     () =>
@@ -57,6 +66,22 @@ function VacationDetailsPanel({
         .sort((a, b) => (a.alert.daysUntilStart ?? 9999) - (b.alert.daysUntilStart ?? 9999)),
     [vacationList],
   );
+  const editableEmployees = useMemo(() => {
+    if (!vacation?.employeeId) {
+      return employees;
+    }
+
+    return employees.some((employee) => employee.id === vacation.employeeId)
+      ? employees
+      : [
+          ...employees,
+          {
+            id: vacation.employeeId,
+            fullName: vacation.employeeName,
+            isActive: false,
+          },
+        ];
+  }, [employees, vacation]);
 
   if (!vacation) {
     return (
@@ -126,9 +151,10 @@ function VacationDetailsPanel({
 
     if (!isManager) return;
 
-    const cleanName = employeeName.trim().replace(/\s{2,}/g, ' ');
-    if (!cleanName) {
-      setError('Vardas ir pavardė negali būti tuščias.');
+    const selectedEmployee =
+      editableEmployees.find((employee) => employee.id === employeeId) || null;
+    if (!selectedEmployee) {
+      setError('Pasirinkite darbuotoją iš sąrašo.');
       return;
     }
 
@@ -144,7 +170,7 @@ function VacationDetailsPanel({
 
     setError('');
     const updates = {
-      employeeName: cleanName,
+      employeeId: selectedEmployee.id,
       startDate,
       endDate,
     };
@@ -185,13 +211,20 @@ function VacationDetailsPanel({
 
       <form className="form-grid tight" onSubmit={submit}>
         <label>
-          Vardas ir Pavardė
-          <input
-            type="text"
-            value={employeeName}
-            onChange={(event) => setEmployeeName(event.target.value)}
+          Darbuotojas
+          <select
+            value={employeeId}
+            onChange={(event) => setEmployeeId(event.target.value)}
             disabled={!isManager || loading}
-          />
+          >
+            <option value="">Pasirinkite darbuotoją</option>
+            {editableEmployees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.fullName}
+                {!employee.isActive ? ' (archyvuotas)' : ''}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label>
@@ -246,6 +279,13 @@ function VacationDetailsPanel({
         {isManager ? (
           <p className="panel-note">
             Patarimas: galite pertempti bloką grafike į kairę/dešinę, kad pakeistumėte datas.
+          </p>
+        ) : null}
+
+        {isManager && !editableEmployees.length ? (
+          <p className="panel-note">
+            Šiame padalinyje dar nėra darbuotojų sąrašo, todėl pirmiausia reikia pridėti
+            darbuotojus darbuotojų centre.
           </p>
         ) : null}
 

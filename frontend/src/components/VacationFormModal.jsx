@@ -1,10 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ENTRY_TYPES, ENTRY_TYPE_OPTIONS } from '../entryTypes';
 
-function VacationFormModal({ isOpen, onClose, onSubmit, submitting }) {
+function findEmployeeByInitialValues(employees, initialValues) {
+  const requestedEmployeeId = String(initialValues?.employeeId || '').trim();
+  if (requestedEmployeeId) {
+    return employees.find((employee) => employee.id === requestedEmployeeId) || null;
+  }
+
+  const requestedEmployeeName = String(initialValues?.employeeName || '')
+    .trim()
+    .toLowerCase();
+  if (!requestedEmployeeName) {
+    return null;
+  }
+
+  return (
+    employees.find((employee) => employee.fullName.trim().toLowerCase() === requestedEmployeeName) || null
+  );
+}
+
+function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValues, employees = [] }) {
   const today = new Date().toISOString().slice(0, 10);
+  const allowedEntryTypes = new Set(ENTRY_TYPE_OPTIONS.map((option) => option.value));
+  const normalizedInitialValues = useMemo(
+    () => {
+      const matchedEmployee = findEmployeeByInitialValues(employees, initialValues);
+      return {
+        entryType: allowedEntryTypes.has(initialValues?.entryType)
+          ? initialValues.entryType
+          : ENTRY_TYPES.VACATION,
+        employeeId: matchedEmployee?.id || '',
+        startDate: initialValues?.startDate || today,
+        endDate: initialValues?.endDate || initialValues?.startDate || today,
+      };
+    },
+    [allowedEntryTypes, employees, initialValues, today],
+  );
   const [entryType, setEntryType] = useState(ENTRY_TYPES.VACATION);
-  const [employeeName, setEmployeeName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [error, setError] = useState('');
@@ -15,21 +48,26 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting }) {
       return;
     }
 
-    setEntryType(ENTRY_TYPES.VACATION);
-    setEmployeeName('');
-    setStartDate(today);
-    setEndDate(today);
+    setEntryType(normalizedInitialValues.entryType);
+    setEmployeeId(normalizedInitialValues.employeeId);
+    setStartDate(normalizedInitialValues.startDate);
+    setEndDate(normalizedInitialValues.endDate);
     setError('');
-  }, [isOpen, today]);
+  }, [isOpen, normalizedInitialValues]);
 
   if (!isOpen) return null;
 
   const submit = async (event) => {
     event.preventDefault();
 
-    const cleanedName = employeeName.trim().replace(/\s{2,}/g, ' ');
-    if (!cleanedName) {
-      setError('Įveskite vardą ir pavardę.');
+    if (!employees.length) {
+      setError('Šiame padalinyje dar nėra darbuotojų sąrašo.');
+      return;
+    }
+
+    const selectedEmployee = employees.find((employee) => employee.id === employeeId) || null;
+    if (!selectedEmployee) {
+      setError('Pasirinkite darbuotoją iš sąrašo.');
       return;
     }
 
@@ -41,7 +79,8 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting }) {
     setError('');
     await onSubmit({
       entryType,
-      employeeName: cleanedName,
+      employeeId: selectedEmployee.id,
+      employeeName: selectedEmployee.fullName,
       startDate,
       endDate,
     });
@@ -70,15 +109,20 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting }) {
           </label>
 
           <label>
-            Vardas ir Pavardė
-            <input
-              type="text"
-              value={employeeName}
-              onChange={(event) => setEmployeeName(event.target.value)}
-              placeholder="Pvz., Jonė Jonaitė"
+            Darbuotojas
+            <select
+              value={employeeId}
+              onChange={(event) => setEmployeeId(event.target.value)}
               autoFocus
               required
-            />
+            >
+              <option value="">Pasirinkite darbuotoją</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.fullName}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label>
@@ -100,6 +144,13 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting }) {
               required
             />
           </label>
+
+          {!employees.length ? (
+            <p className="panel-note">
+              Šiame padalinyje dar nėra aktyvių darbuotojų. Vadovas pirmiausia turi juos pridėti
+              darbuotojų centre.
+            </p>
+          ) : null}
 
           {error ? <p className="form-error">{error}</p> : null}
 

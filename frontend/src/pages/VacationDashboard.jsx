@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   approveVacation,
+  createEmployeeAsManager,
   createVacationRequest,
+  fetchEmployees,
   fetchVacations,
+  patchEmployeeAsManager,
   patchVacationAsManager,
   rejectVacation,
   validateManagerSession,
 } from '../api';
 import { DEPARTMENTS, DEPARTMENT_OPTIONS, getDepartmentLabel, isValidDepartment } from '../departments';
+import EmployeeCenterModal from '../components/EmployeeCenterModal';
 import GanttChart from '../components/GanttChart';
 import VacationDetailsPanel from '../components/VacationDetailsPanel';
 import VacationFormModal from '../components/VacationFormModal';
@@ -32,6 +36,13 @@ function VacationDashboard({ isManager }) {
     ? requestedDepartmentRaw
     : '';
   const requestedVacationId = String(queryParams.get('vacationId') || '').trim();
+  const requestedEntryType = String(queryParams.get('entryType') || '')
+    .trim()
+    .toLowerCase();
+  const requestedEmployeeName = String(queryParams.get('employeeName') || '').trim();
+  const requestedStartDate = String(queryParams.get('startDate') || '').trim();
+  const requestedEndDate = String(queryParams.get('endDate') || '').trim();
+  const shouldPrefillCreate = queryParams.get('openRequest') === '1';
   const managerToken = isManager ? token : '';
   const managerDepartment = String(managerDepartmentParam || '').trim().toLowerCase();
   const managerDepartmentValid = !isManager || isValidDepartment(managerDepartment);
@@ -61,29 +72,39 @@ function VacationDashboard({ isManager }) {
   const [savingAction, setSavingAction] = useState(false);
 
   const [vacations, setVacations] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [selectedVacationId, setSelectedVacationId] = useState(requestedVacationId || null);
 
   const [showModal, setShowModal] = useState(false);
+  const [showEmployeeCenter, setShowEmployeeCenter] = useState(false);
+  const [prefillConsumed, setPrefillConsumed] = useState(false);
   const [viewMode, setViewMode] = useState('month');
   const [anchorDate, setAnchorDate] = useState(utcMonthAnchorNow());
   const [showRejected, setShowRejected] = useState(false);
 
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [savingEmployeeAction, setSavingEmployeeAction] = useState(false);
 
   const selectedVacation = useMemo(
     () => vacations.find((vacation) => vacation.id === selectedVacationId) || null,
     [selectedVacationId, vacations],
   );
+  const formEmployees = useMemo(
+    () => employees.filter((employee) => employee.isActive),
+    [employees],
+  );
+  const detailsEmployees = isManager ? employees : formEmployees;
 
   const flashMessage = (text) => {
     setMessage(text);
     setTimeout(() => setMessage(''), 3500);
   };
 
-  const loadVacations = useCallback(async () => {
+  const loadDashboardData = useCallback(async () => {
     if (!isValidDepartment(activeDepartment)) {
       setVacations([]);
+      setEmployees([]);
       setLoadingData(false);
       return;
     }
@@ -92,16 +113,26 @@ function VacationDashboard({ isManager }) {
     setError('');
 
     try {
-      const data = await fetchVacations({
-        managerToken: isManager ? managerToken : undefined,
-        department: activeDepartment,
-        includeRejected: isManager && showRejected,
-      });
+      const [vacationData, employeeData] = await Promise.all([
+        fetchVacations({
+          managerToken: isManager ? managerToken : undefined,
+          department: activeDepartment,
+          includeRejected: isManager && showRejected,
+        }),
+        fetchEmployees({
+          managerToken: isManager ? managerToken : undefined,
+          department: activeDepartment,
+          includeInactive: isManager,
+        }),
+      ]);
 
-      setVacations(data);
+      setVacations(vacationData);
+      setEmployees(employeeData);
       setSelectedVacationId((currentSelectedId) => {
         if (!currentSelectedId) return null;
-        return data.some((vacation) => vacation.id === currentSelectedId) ? currentSelectedId : null;
+        return vacationData.some((vacation) => vacation.id === currentSelectedId)
+          ? currentSelectedId
+          : null;
       });
     } catch (loadError) {
       setError(loadError.message);
@@ -197,8 +228,17 @@ function VacationDashboard({ isManager }) {
       return;
     }
 
-    loadVacations();
-  }, [loadVacations, sessionValidated]);
+    loadDashboardData();
+  }, [loadDashboardData, sessionValidated]);
+
+  useEffect(() => {
+    if (!sessionValidated || loadingData || !shouldPrefillCreate || prefillConsumed) {
+      return;
+    }
+
+    setShowModal(true);
+    setPrefillConsumed(true);
+  }, [loadingData, prefillConsumed, sessionValidated, shouldPrefillCreate]);
 
   useEffect(() => {
     setSelectedVacationId(null);
@@ -223,7 +263,7 @@ function VacationDashboard({ isManager }) {
           ? `Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`
           : `Atostogų prašymas pateiktas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
       );
-      await loadVacations();
+      await loadDashboardData();
     } catch (submitError) {
       setError(submitError.message);
     } finally {
@@ -248,7 +288,7 @@ function VacationDashboard({ isManager }) {
       setError('');
       await approveVacation({ id: selectedVacation.id, managerToken, department: activeDepartment });
       flashMessage('Atostogos patvirtintos.');
-      await loadVacations();
+      await loadDashboardData();
     } catch (actionError) {
       setError(actionError.message);
     } finally {
@@ -266,7 +306,7 @@ function VacationDashboard({ isManager }) {
       flashMessage(
         isIllnessEntry(selectedVacation) ? 'Ligos įrašas pašalintas.' : 'Atostogų prašymas atmestas.',
       );
-      await loadVacations();
+      await loadDashboardData();
     } catch (actionError) {
       setError(actionError.message);
     } finally {
@@ -287,7 +327,7 @@ function VacationDashboard({ isManager }) {
         updates,
       });
       flashMessage('Pakeitimai išsaugoti.');
-      await loadVacations();
+      await loadDashboardData();
     } catch (actionError) {
       setError(actionError.message);
     } finally {
@@ -314,11 +354,54 @@ function VacationDashboard({ isManager }) {
 
       setSelectedVacationId(vacation.id);
       flashMessage('Datos pakoreguotos grafike.');
-      await loadVacations();
+      await loadDashboardData();
     } catch (actionError) {
       setError(actionError.message);
     } finally {
       setSavingAction(false);
+    }
+  };
+
+  const handleCreateEmployee = async (fullName) => {
+    if (!isManager) return;
+
+    try {
+      setSavingEmployeeAction(true);
+      setError('');
+      await createEmployeeAsManager({
+        managerToken,
+        department: activeDepartment,
+        fullName,
+      });
+      flashMessage(`Darbuotojas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
+      await loadDashboardData();
+    } catch (actionError) {
+      setError(actionError.message);
+      throw actionError;
+    } finally {
+      setSavingEmployeeAction(false);
+    }
+  };
+
+  const handleUpdateEmployee = async (employeeId, updates) => {
+    if (!isManager) return;
+
+    try {
+      setSavingEmployeeAction(true);
+      setError('');
+      await patchEmployeeAsManager({
+        id: employeeId,
+        managerToken,
+        department: activeDepartment,
+        updates,
+      });
+      flashMessage('Darbuotojo kortelė atnaujinta.');
+      await loadDashboardData();
+    } catch (actionError) {
+      setError(actionError.message);
+      throw actionError;
+    } finally {
+      setSavingEmployeeAction(false);
     }
   };
 
@@ -390,6 +473,20 @@ function VacationDashboard({ isManager }) {
           Pridėti įrašą
         </button>
 
+        {isManager ? (
+          <button
+            type="button"
+            className="ghost-btn wide"
+            onClick={() => setShowEmployeeCenter(true)}
+          >
+            Darbuotojų centras
+          </button>
+        ) : null}
+
+        <p className="small-note">
+          Aktyvūs darbuotojai šiame padalinyje: <strong>{formEmployees.length}</strong>
+        </p>
+
         <div className="pill-row">
           <span className={`mode-pill ${isManager ? 'manager' : 'employee'}`}>
             {isManager ? 'Vadovo režimas' : 'Darbuotojo režimas'}
@@ -440,6 +537,7 @@ function VacationDashboard({ isManager }) {
       <VacationDetailsPanel
         vacation={selectedVacation}
         allVacations={vacations}
+        employees={detailsEmployees}
         isManager={isManager}
         canEditSignedRequest={isManager && managerAccess.canEditSignedRequest}
         loading={savingAction}
@@ -455,6 +553,24 @@ function VacationDashboard({ isManager }) {
         onClose={() => setShowModal(false)}
         onSubmit={handleCreate}
         submitting={savingAction}
+        employees={formEmployees}
+        initialValues={{
+          entryType: requestedEntryType || ENTRY_TYPES.VACATION,
+          employeeId: '',
+          employeeName: requestedEmployeeName,
+          startDate: requestedStartDate,
+          endDate: requestedEndDate,
+        }}
+      />
+
+      <EmployeeCenterModal
+        isOpen={showEmployeeCenter}
+        onClose={() => setShowEmployeeCenter(false)}
+        departmentLabel={getDepartmentLabel(activeDepartment)}
+        employees={employees}
+        loading={savingEmployeeAction}
+        onCreateEmployee={handleCreateEmployee}
+        onUpdateEmployee={handleUpdateEmployee}
       />
     </div>
   );

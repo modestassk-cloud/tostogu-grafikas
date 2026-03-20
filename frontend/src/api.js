@@ -34,6 +34,21 @@ export async function fetchVacations({
   return payload.vacations || [];
 }
 
+export async function fetchEmployees({
+  managerToken,
+  department,
+  includeInactive = false,
+} = {}) {
+  if (managerToken && department) {
+    const query = includeInactive ? '?includeInactive=true' : '';
+    const payload = await request(`/api/manager/${department}/employees${query}`, { managerToken });
+    return payload.employees || [];
+  }
+
+  const payload = await request(`/api/employees?department=${encodeURIComponent(department || '')}`);
+  return payload.employees || [];
+}
+
 export async function createVacationRequest(data) {
   const payload = await request('/api/vacations', {
     method: 'POST',
@@ -73,4 +88,24 @@ export async function rejectVacation({ id, managerToken, department }) {
   });
 
   return payload.vacation;
+}
+
+export async function createEmployeeAsManager({ managerToken, department, fullName }) {
+  const payload = await request(`/api/manager/${department}/employees`, {
+    method: 'POST',
+    managerToken,
+    body: { fullName },
+  });
+
+  return payload.employee;
+}
+
+export async function patchEmployeeAsManager({ id, managerToken, department, updates }) {
+  const payload = await request(`/api/manager/${department}/employees/${id}`, {
+    method: 'PATCH',
+    managerToken,
+    body: updates,
+  });
+
+  return payload.employee;
 }
