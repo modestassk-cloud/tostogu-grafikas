@@ -147,8 +147,7 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValue
 
           {!employees.length ? (
             <p className="panel-note">
-              Šiame padalinyje dar nėra aktyvių darbuotojų. Vadovas pirmiausia turi juos pridėti
-              darbuotojų centre.
+              Šiame padalinyje dar nėra aktyvių darbuotojų kortelių iš Valdymo centro.
             </p>
           ) : null}
 

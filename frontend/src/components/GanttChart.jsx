@@ -33,52 +33,89 @@ function assignLanes(items) {
     });
 }
 
-function buildRows(vacations, rangeStart, rangeEnd, dayWidth) {
-  const employees = new Map();
+function normalizeLookup(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildRows(vacations, employees, rangeStart, rangeEnd, dayWidth) {
+  const vacationsByEmployeeKey = new Map();
+  const consumedVacationIds = new Set();
 
   vacations.forEach((vacation) => {
-    const key = vacation.employeeName.trim();
-    if (!employees.has(key)) {
-      employees.set(key, []);
+    const employeeKey = String(vacation.employeeId || '').trim() || normalizeLookup(vacation.employeeName);
+    if (!vacationsByEmployeeKey.has(employeeKey)) {
+      vacationsByEmployeeKey.set(employeeKey, []);
     }
-    employees.get(key).push(vacation);
+    vacationsByEmployeeKey.get(employeeKey).push(vacation);
   });
 
-  return Array.from(employees.entries())
-    .sort((a, b) => a[0].localeCompare(b[0], 'lt'))
-    .map(([employeeName, employeeVacations]) => {
-      const withLanes = assignLanes(employeeVacations);
-      const visibleBars = withLanes
-        .map((vacation) => {
-          const startDate = parseIsoDate(vacation.startDate);
-          const endDate = parseIsoDate(vacation.endDate);
-          const clamped = clampInterval(startDate, endDate, rangeStart, rangeEnd);
+  const knownRows = (employees || []).map((employee) => {
+    const employeeKey = String(employee.id || '').trim();
+    const fallbackKey = normalizeLookup(employee.fullName);
+    const employeeVacations = [
+      ...(vacationsByEmployeeKey.get(employeeKey) || []),
+      ...((employeeKey && fallbackKey && employeeKey !== fallbackKey ? vacationsByEmployeeKey.get(fallbackKey) || [] : [])),
+    ]
+      .filter((vacation, index, items) => items.findIndex((candidate) => candidate.id === vacation.id) === index)
+      .sort((left, right) => left.startDate.localeCompare(right.startDate));
 
-          if (!clamped) {
-            return null;
-          }
+    employeeVacations.forEach((vacation) => consumedVacationIds.add(vacation.id));
 
-          const left = differenceInDays(rangeStart, clamped.clampedStart) * dayWidth;
-          const width = (differenceInDays(clamped.clampedStart, clamped.clampedEnd) + 1) * dayWidth;
+    return {
+      employeeName: employee.fullName,
+      rowKey: employee.id || employee.fullName,
+      employeeVacations,
+    };
+  });
 
-          return {
-            vacation,
-            lane: vacation.lane,
-            left,
-            width,
-          };
-        })
-        .filter(Boolean);
-
-      const laneCount = withLanes.reduce((max, item) => Math.max(max, item.lane + 1), 1);
-
-      return {
-        employeeName,
-        bars: visibleBars,
-        laneCount,
+  const orphanedRows = vacations
+    .filter((vacation) => !consumedVacationIds.has(vacation.id))
+    .reduce((rows, vacation) => {
+      const key = normalizeLookup(vacation.employeeName);
+      const existingRow = rows.get(key) || {
+        employeeName: vacation.employeeName,
+        rowKey: vacation.employeeId || vacation.employeeName,
+        employeeVacations: [],
       };
-    })
-    .filter((row) => row.bars.length > 0);
+      existingRow.employeeVacations.push(vacation);
+      rows.set(key, existingRow);
+      return rows;
+    }, new Map());
+
+  return [...knownRows, ...Array.from(orphanedRows.values())].map((row) => {
+    const withLanes = assignLanes(row.employeeVacations);
+    const visibleBars = withLanes
+      .map((vacation) => {
+        const startDate = parseIsoDate(vacation.startDate);
+        const endDate = parseIsoDate(vacation.endDate);
+        const clamped = clampInterval(startDate, endDate, rangeStart, rangeEnd);
+
+        if (!clamped) {
+          return null;
+        }
+
+        const left = differenceInDays(rangeStart, clamped.clampedStart) * dayWidth;
+        const width = (differenceInDays(clamped.clampedStart, clamped.clampedEnd) + 1) * dayWidth;
+
+        return {
+          vacation,
+          lane: vacation.lane,
+          left,
+          width,
+        };
+      })
+      .filter(Boolean);
+
+    const laneCount = withLanes.reduce((max, item) => Math.max(max, item.lane + 1), 1);
+
+    return {
+      employeeName: row.employeeName,
+      rowKey: row.rowKey,
+      bars: visibleBars,
+      laneCount,
+      recordCount: row.employeeVacations.length,
+    };
+  });
 }
 
 function VacationBar({
@@ -168,6 +205,7 @@ function VacationBar({
 
 function GanttChart({
   vacations,
+  employees = [],
   isManager,
   selectedVacationId,
   viewMode,
@@ -245,8 +283,8 @@ function GanttChart({
   );
 
   const rows = useMemo(
-    () => buildRows(visibleVacations, rangeStart, rangeEnd, dayWidth),
-    [dayWidth, rangeEnd, rangeStart, visibleVacations],
+    () => buildRows(visibleVacations, employees, rangeStart, rangeEnd, dayWidth),
+    [dayWidth, employees, rangeEnd, rangeStart, visibleVacations],
   );
 
   const overlapByDay = useMemo(
@@ -368,10 +406,10 @@ function GanttChart({
               const rowHeight = Math.max(50, row.laneCount * 34 + 12);
 
               return (
-                <div key={row.employeeName} className="gantt-row" style={{ minHeight: `${rowHeight}px` }}>
+                <div key={row.rowKey} className="gantt-row" style={{ minHeight: `${rowHeight}px` }}>
                   <div className="name-cell sticky">
                     <span>{row.employeeName}</span>
-                    <small>{row.bars.length} įraš.</small>
+                    <small>{row.recordCount} įraš.</small>
                   </div>
 
                   <div
@@ -386,7 +424,7 @@ function GanttChart({
                         const dayKindClass = meta.isHoliday ? 'holiday' : meta.isWeekend ? 'weekend' : '';
                         return (
                           <div
-                            key={`bg-${row.employeeName}-${meta.isoDate}`}
+                            key={`bg-${row.rowKey}-${meta.isoDate}`}
                             className={`day-bg-cell ${dayKindClass}`}
                             style={{
                               left: `${meta.index * dayWidth}px`,
@@ -399,7 +437,7 @@ function GanttChart({
 
                     {monthMarkers.map(({ index }) => (
                       <div
-                        key={`marker-${row.employeeName}-${index}`}
+                        key={`marker-${row.rowKey}-${index}`}
                         className="month-marker"
                         style={{ left: `${index * dayWidth}px` }}
                       />

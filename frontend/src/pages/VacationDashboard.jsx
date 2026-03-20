@@ -2,17 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   approveVacation,
-  createEmployeeAsManager,
   createVacationRequest,
   fetchEmployees,
   fetchVacations,
-  patchEmployeeAsManager,
   patchVacationAsManager,
   rejectVacation,
   validateManagerSession,
 } from '../api';
 import { DEPARTMENTS, DEPARTMENT_OPTIONS, getDepartmentLabel, isValidDepartment } from '../departments';
-import EmployeeCenterModal from '../components/EmployeeCenterModal';
 import GanttChart from '../components/GanttChart';
 import VacationDetailsPanel from '../components/VacationDetailsPanel';
 import VacationFormModal from '../components/VacationFormModal';
@@ -76,7 +73,6 @@ function VacationDashboard({ isManager }) {
   const [selectedVacationId, setSelectedVacationId] = useState(requestedVacationId || null);
 
   const [showModal, setShowModal] = useState(false);
-  const [showEmployeeCenter, setShowEmployeeCenter] = useState(false);
   const [prefillConsumed, setPrefillConsumed] = useState(false);
   const [viewMode, setViewMode] = useState('month');
   const [anchorDate, setAnchorDate] = useState(utcMonthAnchorNow());
@@ -84,21 +80,16 @@ function VacationDashboard({ isManager }) {
 
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [savingEmployeeAction, setSavingEmployeeAction] = useState(false);
 
   const selectedVacation = useMemo(
     () => vacations.find((vacation) => vacation.id === selectedVacationId) || null,
     [selectedVacationId, vacations],
   );
-  const cardEmployees = useMemo(
-    () => employees.filter((employee) => employee.source !== 'imported'),
+  const formEmployees = useMemo(
+    () => employees.filter((employee) => employee.isActive),
     [employees],
   );
-  const formEmployees = useMemo(
-    () => cardEmployees.filter((employee) => employee.isActive),
-    [cardEmployees],
-  );
-  const detailsEmployees = formEmployees;
+  const detailsEmployees = employees;
 
   const flashMessage = (text) => {
     setMessage(text);
@@ -117,7 +108,7 @@ function VacationDashboard({ isManager }) {
     setError('');
 
     try {
-      const [vacationData, employeeData] = await Promise.all([
+      const [vacationResult, employeeResult] = await Promise.allSettled([
         fetchVacations({
           managerToken: isManager ? managerToken : undefined,
           department: activeDepartment,
@@ -127,18 +118,27 @@ function VacationDashboard({ isManager }) {
           managerToken: isManager ? managerToken : undefined,
           department: activeDepartment,
           includeInactive: isManager,
-          includeImported: isManager,
         }),
       ]);
 
-      setVacations(vacationData);
-      setEmployees(employeeData);
+      const nextVacations = vacationResult.status === 'fulfilled' ? vacationResult.value : [];
+      const nextEmployees = employeeResult.status === 'fulfilled' ? employeeResult.value : [];
+
+      setVacations(nextVacations);
+      setEmployees(nextEmployees);
       setSelectedVacationId((currentSelectedId) => {
         if (!currentSelectedId) return null;
-        return vacationData.some((vacation) => vacation.id === currentSelectedId)
+        return nextVacations.some((vacation) => vacation.id === currentSelectedId)
           ? currentSelectedId
           : null;
       });
+
+      const loadErrors = [vacationResult, employeeResult]
+        .filter((result) => result.status === 'rejected')
+        .map((result) => result.reason?.message || 'Nepavyko užkrauti duomenų.');
+      if (loadErrors.length) {
+        setError(loadErrors.join(' '));
+      }
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -367,49 +367,6 @@ function VacationDashboard({ isManager }) {
     }
   };
 
-  const handleCreateEmployee = async (fullName) => {
-    if (!isManager) return;
-
-    try {
-      setSavingEmployeeAction(true);
-      setError('');
-      await createEmployeeAsManager({
-        managerToken,
-        department: activeDepartment,
-        fullName,
-      });
-      flashMessage(`Darbuotojas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
-      await loadDashboardData();
-    } catch (actionError) {
-      setError(actionError.message);
-      throw actionError;
-    } finally {
-      setSavingEmployeeAction(false);
-    }
-  };
-
-  const handleUpdateEmployee = async (employeeId, updates) => {
-    if (!isManager) return;
-
-    try {
-      setSavingEmployeeAction(true);
-      setError('');
-      await patchEmployeeAsManager({
-        id: employeeId,
-        managerToken,
-        department: activeDepartment,
-        updates,
-      });
-      flashMessage('Darbuotojo kortelė atnaujinta.');
-      await loadDashboardData();
-    } catch (actionError) {
-      setError(actionError.message);
-      throw actionError;
-    } finally {
-      setSavingEmployeeAction(false);
-    }
-  };
-
   if (loadingSession) {
     return <main className="fullscreen-message">Tikrinama vadovo prieiga...</main>;
   }
@@ -478,24 +435,15 @@ function VacationDashboard({ isManager }) {
           Pridėti įrašą
         </button>
 
-        {isManager ? (
-          <button
-            type="button"
-            className="ghost-btn wide"
-            onClick={() => setShowEmployeeCenter(true)}
-          >
-            Darbuotojų centras
-          </button>
-        ) : null}
-
         <p className="small-note">
           Aktyvūs darbuotojai šiame padalinyje: <strong>{formEmployees.length}</strong>
         </p>
 
-        {isManager && !formEmployees.length ? (
+        {!formEmployees.length ? (
           <p className="small-note">
-            Formoje matysis tik <strong>darbuotojų kortelės</strong>. Jei sąrašas tuščias,
-            atsidarykite darbuotojų centrą ir pažymėkite tinkamus darbuotojus kaip korteles.
+            Darbuotojų sąrašas kraunamas iš <strong>Valdymo centro</strong>. Jei čia nieko nėra,
+            vadinasi tame padalinyje kortelės dar nesutvarkytos arba nepasiekiamas centrinis
+            katalogas.
           </p>
         ) : null}
 
@@ -531,6 +479,7 @@ function VacationDashboard({ isManager }) {
         ) : (
           <GanttChart
             vacations={vacations}
+            employees={formEmployees}
             isManager={isManager}
             selectedVacationId={selectedVacationId}
             viewMode={viewMode}
@@ -573,16 +522,6 @@ function VacationDashboard({ isManager }) {
           startDate: requestedStartDate,
           endDate: requestedEndDate,
         }}
-      />
-
-      <EmployeeCenterModal
-        isOpen={showEmployeeCenter}
-        onClose={() => setShowEmployeeCenter(false)}
-        departmentLabel={getDepartmentLabel(activeDepartment)}
-        employees={employees}
-        loading={savingEmployeeAction}
-        onCreateEmployee={handleCreateEmployee}
-        onUpdateEmployee={handleUpdateEmployee}
       />
     </div>
   );

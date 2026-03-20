@@ -649,6 +649,19 @@ function updateVacation(id, updates) {
   return getVacationById(id);
 }
 
+function syncVacationEmployeeLink(id, { employeeId = null, employeeName = '' } = {}) {
+  db.prepare(
+    `
+      UPDATE vacations
+      SET employee_id = ?,
+          employee_name = ?
+      WHERE id = ?
+    `,
+  ).run(employeeId || null, normalizePersonName(employeeName), id);
+
+  return getVacationById(id);
+}
+
 function listEmployees({ department, includeInactive = false, includeImported = true } = {}) {
   const conditions = [];
   const values = [];
@@ -873,6 +886,7 @@ module.exports = {
   createVacation,
   getVacationById,
   updateVacation,
+  syncVacationEmployeeLink,
   listEmployees,
   getEmployeeById,
   findEmployeeByName,

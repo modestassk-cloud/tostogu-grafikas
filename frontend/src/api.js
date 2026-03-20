@@ -38,15 +38,11 @@ export async function fetchEmployees({
   managerToken,
   department,
   includeInactive = false,
-  includeImported = false,
 } = {}) {
   if (managerToken && department) {
     const query = new URLSearchParams();
     if (includeInactive) {
       query.set('includeInactive', 'true');
-    }
-    if (includeImported) {
-      query.set('includeImported', 'true');
     }
     const queryString = query.toString();
     const payload = await request(
@@ -99,24 +95,4 @@ export async function rejectVacation({ id, managerToken, department }) {
   });
 
   return payload.vacation;
-}
-
-export async function createEmployeeAsManager({ managerToken, department, fullName }) {
-  const payload = await request(`/api/manager/${department}/employees`, {
-    method: 'POST',
-    managerToken,
-    body: { fullName },
-  });
-
-  return payload.employee;
-}
-
-export async function patchEmployeeAsManager({ id, managerToken, department, updates }) {
-  const payload = await request(`/api/manager/${department}/employees/${id}`, {
-    method: 'PATCH',
-    managerToken,
-    body: updates,
-  });
-
-  return payload.employee;
 }

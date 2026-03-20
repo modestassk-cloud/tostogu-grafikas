@@ -9,23 +9,20 @@ const { createEmailNotifierFromEnv } = require('./notifications');
 const {
   VACATION_STATUSES,
   ENTRY_TYPES,
-  EMPLOYEE_SOURCES,
   DEPARTMENTS,
   dbPath,
   isValidDepartment,
   isValidEntryType,
-  isValidEmployeeSource,
   getOrCreateManagerTokens,
   listVacations,
   createVacation,
   getVacationById,
   updateVacation,
-  listEmployees,
-  getEmployeeById,
-  findEmployeeByName,
-  createEmployee,
-  updateEmployee,
 } = require('./db');
+const {
+  listPersonnelEmployees,
+  resolvePersonnelEmployee,
+} = require('./personnelDirectory');
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
@@ -331,45 +328,32 @@ function getDepartmentLabel(department) {
   return department === DEPARTMENTS.ADMINISTRATION ? 'Administracija' : 'Gamyba';
 }
 
-function resolveEmployeeSelectionOrSendError(
+async function resolveEmployeeSelectionOrSendError(
   res,
-  { department, employeeId, employeeName, allowInactive = false, allowImported = false },
+  { department, employeeId, employeeName, allowInactive = false },
 ) {
-  const normalizedEmployeeId = sanitizeId(employeeId);
-  if (normalizedEmployeeId) {
-    const employee = getEmployeeById(normalizedEmployeeId);
-    if (!employee || employee.department !== department) {
-      res.status(400).json({ error: 'Pasirinktas darbuotojas šiame padalinyje nerastas.' });
-      return null;
-    }
-
-    if (!allowInactive && !employee.isActive) {
-      res.status(400).json({ error: 'Pasirinktas darbuotojas neaktyvus. Pasirinkite kitą iš sąrašo.' });
-      return null;
-    }
-
-    if (!allowImported && employee.source === EMPLOYEE_SOURCES.IMPORTED) {
-      res.status(400).json({ error: 'Pasirinktas vardas yra tik istorinis importas, o ne darbuotojo kortelė.' });
-      return null;
-    }
-
-    return employee;
-  }
-
   const cleanedName = sanitizeName(employeeName);
-  if (!cleanedName) {
-    res.status(400).json({ error: 'Pasirinkite darbuotoją iš sąrašo.' });
+  const employee = await resolvePersonnelEmployee({
+    department,
+    employeeId: sanitizeId(employeeId),
+    employeeName: cleanedName,
+    allowInactive,
+  }).catch((error) => {
+    const message = error?.message || 'Nepavyko gauti darbuotojų kortelių iš Valdymo centro.';
+    res.status(502).json({ error: message });
+    return null;
+  });
+
+  if (res.headersSent) {
     return null;
   }
 
-  const employee = findEmployeeByName({ department, fullName: cleanedName });
-  if (!employee || (!allowInactive && !employee.isActive)) {
-    res.status(400).json({ error: 'Pasirinktas darbuotojas sąraše nerastas.' });
-    return null;
-  }
-
-  if (!allowImported && employee.source === EMPLOYEE_SOURCES.IMPORTED) {
-    res.status(400).json({ error: 'Pasirinktas vardas yra tik istorinis importas, o ne darbuotojo kortelė.' });
+  if (!employee) {
+    res.status(400).json({
+      error: cleanedName
+        ? 'Pasirinktas darbuotojas Valdymo centro kortelėse nerastas.'
+        : 'Pasirinkite darbuotoją iš sąrašo.',
+    });
     return null;
   }
 
@@ -575,17 +559,23 @@ app.get('/api/vacations', (req, res) => {
   res.json({ vacations });
 });
 
-app.get('/api/employees', (req, res) => {
+app.get('/api/employees', async (req, res) => {
   const department = parseDepartmentOrSendError(res, req.query.department);
   if (!department) {
     return;
   }
 
-  const employees = listEmployees({ department, includeInactive: false, includeImported: false });
-  res.json({ employees });
+  try {
+    const employees = await listPersonnelEmployees({ department, includeInactive: false });
+    res.json({ employees });
+  } catch (error) {
+    res.status(502).json({
+      error: error?.message || 'Nepavyko gauti darbuotojų kortelių iš Valdymo centro.',
+    });
+  }
 });
 
-app.post('/api/vacations', (req, res) => {
+app.post('/api/vacations', async (req, res) => {
   const department = parseDepartmentOrSendError(res, req.body.department);
   const entryType = parseEntryTypeOrSendError(res, req.body.entryType);
   const startDate = String(req.body.startDate || '');
@@ -603,12 +593,11 @@ app.post('/api/vacations', (req, res) => {
     return res.status(400).json({ error: 'Pradžios data negali būti vėlesnė už pabaigos datą.' });
   }
 
-  const employee = resolveEmployeeSelectionOrSendError(res, {
+  const employee = await resolveEmployeeSelectionOrSendError(res, {
     department,
     employeeId: req.body.employeeId,
     employeeName: req.body.employeeName,
     allowInactive: false,
-    allowImported: false,
   });
   if (!employee) {
     return;
@@ -655,73 +644,31 @@ app.get('/api/manager/:department/vacations', managerAuth, (req, res) => {
   res.json({ vacations });
 });
 
-app.get('/api/manager/:department/employees', managerAuth, (req, res) => {
+app.get('/api/manager/:department/employees', managerAuth, async (req, res) => {
   const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
-  const includeImported = String(req.query.includeImported || 'true').toLowerCase() !== 'false';
-  const employees = listEmployees({ department: req.department, includeInactive, includeImported });
-  res.json({ employees });
+  try {
+    const employees = await listPersonnelEmployees({ department: req.department, includeInactive });
+    res.json({ employees });
+  } catch (error) {
+    res.status(502).json({
+      error: error?.message || 'Nepavyko gauti darbuotojų kortelių iš Valdymo centro.',
+    });
+  }
 });
 
 app.post('/api/manager/:department/employees', managerAuth, (req, res) => {
-  const fullName = sanitizeName(req.body.fullName);
-  if (!fullName) {
-    return res.status(400).json({ error: 'Darbuotojo vardas ir pavardė negali būti tušti.' });
-  }
-
-  const existing = findEmployeeByName({ department: req.department, fullName });
-  if (existing) {
-    return res.status(409).json({ error: 'Toks darbuotojas šiame padalinyje jau yra.' });
-  }
-
-  const employee = createEmployee({
-    fullName,
-    department: req.department,
-    isActive: true,
+  res.status(410).json({
+    error: 'Darbuotojų kortelės valdomos Valdymo centre, ne atostogų grafike.',
   });
-  res.status(201).json({ employee });
 });
 
 app.patch('/api/manager/:department/employees/:id', managerAuth, (req, res) => {
-  const existing = getEmployeeById(req.params.id);
-  if (!existing || existing.department !== req.department) {
-    return res.status(404).json({ error: 'Darbuotojas šiame padalinyje nerastas.' });
-  }
-
-  const updates = {};
-
-  if (Object.prototype.hasOwnProperty.call(req.body, 'fullName')) {
-    const fullName = sanitizeName(req.body.fullName);
-    if (!fullName) {
-      return res.status(400).json({ error: 'Darbuotojo vardas ir pavardė negali būti tušti.' });
-    }
-
-    const matched = findEmployeeByName({ department: req.department, fullName });
-    if (matched && matched.id !== existing.id) {
-      return res.status(409).json({ error: 'Toks darbuotojas šiame padalinyje jau yra.' });
-    }
-
-    updates.fullName = fullName;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(req.body, 'isActive')) {
-    if (typeof req.body.isActive !== 'boolean') {
-      return res.status(400).json({ error: 'isActive turi būti true/false.' });
-    }
-    updates.isActive = req.body.isActive;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(req.body, 'source')) {
-    if (!isValidEmployeeSource(req.body.source)) {
-      return res.status(400).json({ error: 'source turi būti manual arba imported.' });
-    }
-    updates.source = req.body.source;
-  }
-
-  const employee = updateEmployee(existing.id, updates);
-  res.json({ employee });
+  res.status(410).json({
+    error: 'Darbuotojų kortelės valdomos Valdymo centre, ne atostogų grafike.',
+  });
 });
 
-app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
+app.patch('/api/manager/:department/vacations/:id', managerAuth, async (req, res) => {
   const id = req.params.id;
   const existing = getVacationById(id);
 
@@ -735,7 +682,7 @@ app.patch('/api/manager/:department/vacations/:id', managerAuth, (req, res) => {
     Object.prototype.hasOwnProperty.call(req.body, 'employeeId') ||
     Object.prototype.hasOwnProperty.call(req.body, 'employeeName')
   ) {
-    const employee = resolveEmployeeSelectionOrSendError(res, {
+    const employee = await resolveEmployeeSelectionOrSendError(res, {
       department: req.department,
       employeeId: req.body.employeeId,
       employeeName: req.body.employeeName,
@@ -883,6 +830,9 @@ app.listen(port, () => {
         ? `aktyvūs (provider: ${emailNotifier.provider || 'unknown'}, gavėjas: ${emailNotifier.targetEmail || 'nenurodytas'})`
         : 'neaktyvūs (trūksta email konfigūracijos)'
     }`,
+  );
+  console.log(
+    `Darbuotojų katalogas: ${process.env.PERSONNEL_API_BASE_URL || 'https://timesheet-web-production.up.railway.app'}`,
   );
   console.log(
     `IP ribojimas: ${

@@ -284,8 +284,7 @@ function VacationDetailsPanel({
 
         {isManager && !editableEmployees.length ? (
           <p className="panel-note">
-            Šiame padalinyje dar nėra darbuotojų sąrašo, todėl pirmiausia reikia pridėti
-            darbuotojus darbuotojų centre.
+            Šiame padalinyje dar nėra darbuotojų kortelių iš Valdymo centro.
           </p>
         ) : null}
 
