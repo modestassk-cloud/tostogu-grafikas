@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ENTRY_TYPES, ENTRY_TYPE_OPTIONS } from '../entryTypes';
+
+const ALLOWED_ENTRY_TYPES = new Set(ENTRY_TYPE_OPTIONS.map((option) => option.value));
 
 function findEmployeeByInitialValues(employees, initialValues) {
   const requestedEmployeeId = String(initialValues?.employeeId || '').trim();
@@ -21,12 +23,11 @@ function findEmployeeByInitialValues(employees, initialValues) {
 
 function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValues, employees = [] }) {
   const today = new Date().toISOString().slice(0, 10);
-  const allowedEntryTypes = new Set(ENTRY_TYPE_OPTIONS.map((option) => option.value));
   const normalizedInitialValues = useMemo(
     () => {
       const matchedEmployee = findEmployeeByInitialValues(employees, initialValues);
       return {
-        entryType: allowedEntryTypes.has(initialValues?.entryType)
+        entryType: ALLOWED_ENTRY_TYPES.has(initialValues?.entryType)
           ? initialValues.entryType
           : ENTRY_TYPES.VACATION,
         employeeId: matchedEmployee?.id || '',
@@ -34,26 +35,36 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValue
         endDate: initialValues?.endDate || initialValues?.startDate || today,
       };
     },
-    [allowedEntryTypes, employees, initialValues, today],
+    [employees, initialValues, today],
   );
   const [entryType, setEntryType] = useState(ENTRY_TYPES.VACATION);
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [error, setError] = useState('');
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
+      initializedRef.current = false;
       setError('');
       return;
     }
 
-    setEntryType(normalizedInitialValues.entryType);
-    setEmployeeId(normalizedInitialValues.employeeId);
-    setStartDate(normalizedInitialValues.startDate);
-    setEndDate(normalizedInitialValues.endDate);
-    setError('');
-  }, [isOpen, normalizedInitialValues]);
+    if (!initializedRef.current) {
+      setEntryType(normalizedInitialValues.entryType);
+      setEmployeeId(normalizedInitialValues.employeeId);
+      setStartDate(normalizedInitialValues.startDate);
+      setEndDate(normalizedInitialValues.endDate);
+      setError('');
+      initializedRef.current = true;
+      return;
+    }
+
+    if (!employeeId && normalizedInitialValues.employeeId) {
+      setEmployeeId(normalizedInitialValues.employeeId);
+    }
+  }, [employeeId, isOpen, normalizedInitialValues]);
 
   if (!isOpen) return null;
 
