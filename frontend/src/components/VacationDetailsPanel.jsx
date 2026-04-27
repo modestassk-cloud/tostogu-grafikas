@@ -82,6 +82,22 @@ function VacationDetailsPanel({
           },
         ];
   }, [employees, vacation]);
+  const selectedEmployee = useMemo(() => {
+    const matchedEmployee = editableEmployees.find((employee) => employee.id === employeeId);
+    if (matchedEmployee) {
+      return matchedEmployee;
+    }
+
+    if (vacation?.employeeId && employeeId === vacation.employeeId) {
+      return {
+        id: vacation.employeeId,
+        fullName: vacation.employeeName,
+        isActive: false,
+      };
+    }
+
+    return null;
+  }, [editableEmployees, employeeId, vacation]);
 
   if (!vacation) {
     return (
@@ -151,8 +167,6 @@ function VacationDetailsPanel({
 
     if (!isManager) return;
 
-    const selectedEmployee =
-      editableEmployees.find((employee) => employee.id === employeeId) || null;
     if (!selectedEmployee) {
       setError('Pasirinkite darbuotoją iš sąrašo.');
       return;
@@ -169,11 +183,17 @@ function VacationDetailsPanel({
     }
 
     setError('');
-    const updates = {
-      employeeId: selectedEmployee.id,
-      startDate,
-      endDate,
-    };
+    const updates = {};
+
+    if (selectedEmployee.id !== vacation.employeeId) {
+      updates.employeeId = selectedEmployee.id;
+    }
+    if (startDate !== vacation.startDate) {
+      updates.startDate = startDate;
+    }
+    if (endDate !== vacation.endDate) {
+      updates.endDate = endDate;
+    }
 
     if (
       canEditSignedRequest &&
