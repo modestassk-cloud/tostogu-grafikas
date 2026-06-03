@@ -219,6 +219,10 @@ select {
   color: var(--success);
 }
 
+.success-note.compact {
+  padding: 7px 9px;
+}
+
 .main-content {
   padding: 14px;
   overflow: hidden;
@@ -447,6 +451,11 @@ select:focus {
   grid-template-columns: 1fr;
 }
 
+.pdf-action-block {
+  display: grid;
+  gap: 8px;
+}
+
 button {
   appearance: none;
   border: 1px solid var(--line-strong);
@@ -476,6 +485,12 @@ button:disabled {
 
 .ghost-btn {
   background: #fff;
+}
+
+.secondary-btn {
+  background: rgba(0, 134, 73, 0.08);
+  border-color: rgba(0, 101, 54, 0.38);
+  color: var(--brand-deep);
 }
 
 .approve-btn {

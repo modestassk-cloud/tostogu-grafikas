@@ -21,6 +21,8 @@ function VacationDetailsPanel({
   const [endDate, setEndDate] = useState('');
   const [signedRequestReceived, setSignedRequestReceived] = useState(false);
   const [error, setError] = useState('');
+  const [pdfMessage, setPdfMessage] = useState('');
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   useEffect(() => {
     if (!vacation) {
@@ -29,6 +31,8 @@ function VacationDetailsPanel({
       setEndDate('');
       setSignedRequestReceived(false);
       setError('');
+      setPdfMessage('');
+      setGeneratingPdf(false);
       return;
     }
 
@@ -45,6 +49,8 @@ function VacationDetailsPanel({
     setEndDate(vacation.endDate);
     setSignedRequestReceived(Boolean(vacation.signedRequestReceived));
     setError('');
+    setPdfMessage('');
+    setGeneratingPdf(false);
   }, [employees, vacation]);
 
   const vacationList = useMemo(
@@ -205,6 +211,38 @@ function VacationDetailsPanel({
     await onSave(updates);
   };
 
+  const generateRequestPdf = async () => {
+    if (isIllness) {
+      return;
+    }
+
+    const employeeForPdf = selectedEmployee || {
+      fullName: vacation.employeeName,
+      position: '',
+    };
+
+    try {
+      setGeneratingPdf(true);
+      setPdfMessage('');
+      setError('');
+      const { generateVacationRequestPdf } = await import('../vacationRequestPdf');
+      await generateVacationRequestPdf({
+        employeeName: employeeForPdf.fullName || vacation.employeeName,
+        employeePosition:
+          employeeForPdf.position || employeeForPdf.jobTitle || employeeForPdf.role || '',
+        startDate: startDate || vacation.startDate,
+        endDate: endDate || vacation.endDate,
+        submittedAt: vacation.createdAt || new Date(),
+      });
+      setPdfMessage('Prašymo PDF parsiųstas.');
+    } catch (pdfError) {
+      console.error('Nepavyko sugeneruoti atostogų prašymo PDF:', pdfError);
+      setError('Nepavyko sugeneruoti prašymo PDF.');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const selectedStatusView = getVacationStatusView(vacation);
   const selectedRequestAlert = getSignedRequestAlert(vacation);
   const isIllness = isIllnessEntry(vacation);
@@ -316,6 +354,20 @@ function VacationDetailsPanel({
           </button>
         ) : null}
       </form>
+
+      {!isIllness ? (
+        <div className="pdf-action-block">
+          <button
+            type="button"
+            className="secondary-btn wide"
+            onClick={generateRequestPdf}
+            disabled={loading || generatingPdf}
+          >
+            {generatingPdf ? 'Generuojama...' : 'Atsisiųsti prašymą PDF'}
+          </button>
+          {pdfMessage ? <p className="success-note compact">{pdfMessage}</p> : null}
+        </div>
+      ) : null}
 
       {isManager && !isIllness ? (
         <div className="action-grid">
