@@ -258,16 +258,40 @@ function VacationDashboard({ isManager }) {
     try {
       setSavingAction(true);
       setError('');
-      await createVacationRequest({
+      const createdVacation = await createVacationRequest({
         ...payload,
         department: activeDepartment,
       });
       setShowModal(false);
-      flashMessage(
-        payload.entryType === ENTRY_TYPES.ILLNESS
-          ? `Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`
-          : `Atostogų prašymas pateiktas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
-      );
+      if (payload.entryType === ENTRY_TYPES.ILLNESS) {
+        flashMessage(`Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
+      } else {
+        const selectedEmployee =
+          formEmployees.find((employee) => employee.id === payload.employeeId) || null;
+
+        try {
+          const { generateVacationRequestPdf } = await import('../vacationRequestPdf');
+          await generateVacationRequestPdf({
+            employeeName: selectedEmployee?.fullName || payload.employeeName,
+            employeePosition:
+              selectedEmployee?.position ||
+              selectedEmployee?.jobTitle ||
+              selectedEmployee?.role ||
+              '',
+            startDate: payload.startDate,
+            endDate: payload.endDate,
+            submittedAt: createdVacation?.createdAt || new Date(),
+          });
+          flashMessage(
+            `Atostogų prašymas pateiktas ir PDF parsiųstas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
+          );
+        } catch (pdfError) {
+          console.error('Nepavyko sugeneruoti atostogų prašymo PDF:', pdfError);
+          flashMessage(
+            `Atostogų prašymas pateiktas, bet PDF sugeneruoti nepavyko: ${getDepartmentLabel(activeDepartment)} padalinys.`,
+          );
+        }
+      }
       await loadDashboardData();
     } catch (submitError) {
       setError(submitError.message);
