@@ -317,7 +317,7 @@ function parseEntryTypeOrSendError(res, rawValue, fallback = ENTRY_TYPES.VACATIO
   }
 
   if (!isValidEntryType(value)) {
-    res.status(400).json({ error: 'Neteisingas įrašo tipas. Galimi: vacation, illness.' });
+    res.status(400).json({ error: 'Neteisingas įrašo tipas. Galimi: vacation, parent_day, illness.' });
     return null;
   }
 
@@ -326,6 +326,16 @@ function parseEntryTypeOrSendError(res, rawValue, fallback = ENTRY_TYPES.VACATIO
 
 function getDepartmentLabel(department) {
   return department === DEPARTMENTS.ADMINISTRATION ? 'Administracija' : 'Gamyba';
+}
+
+function getEntryTypeLabel(entryType) {
+  if (entryType === ENTRY_TYPES.ILLNESS) {
+    return 'Liga';
+  }
+  if (entryType === ENTRY_TYPES.PARENT_DAY) {
+    return 'Tėvadienis';
+  }
+  return 'Atostogos';
 }
 
 async function resolveEmployeeSelectionOrSendError(
@@ -392,12 +402,14 @@ async function notifyAboutNewVacationRequest(vacation) {
     department: vacation.department,
     vacationId: vacation.id,
   });
+  const entryTypeLabel = getEntryTypeLabel(vacation.entryType);
 
-  const subject = `Naujas atostogų prašymas: ${vacation.employeeName}`;
+  const subject = `Naujas ${entryTypeLabel.toLowerCase()} prašymas: ${vacation.employeeName}`;
   const text = [
     'Sveiki,',
     '',
-    `Gautas naujas atostogų prašymas (${getDepartmentLabel(vacation.department)}).`,
+    `Gautas naujas prašymas (${getDepartmentLabel(vacation.department)}).`,
+    `Tipas: ${entryTypeLabel}`,
     `Darbuotojas: ${vacation.employeeName}`,
     `Laikotarpis: ${vacation.startDate} – ${vacation.endDate}`,
     '',
@@ -611,7 +623,7 @@ app.post('/api/vacations', async (req, res) => {
     startDate,
     endDate,
   });
-  if (created.entryType === ENTRY_TYPES.VACATION) {
+  if (created.entryType !== ENTRY_TYPES.ILLNESS) {
     notifyAboutNewVacationRequest(created)
       .then((result) => {
         if (result?.sent) {
@@ -726,7 +738,7 @@ app.patch('/api/manager/:department/vacations/:id', managerAuth, async (req, res
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'signedRequestReceived')) {
     if (existing.entryType !== ENTRY_TYPES.VACATION) {
-      return res.status(400).json({ error: 'Ligos įrašams pasirašyto prašymo žyma netaikoma.' });
+      return res.status(400).json({ error: 'Šiam įrašo tipui pasirašyto prašymo žyma netaikoma.' });
     }
 
     if (!req.canEditSignedRequest) {

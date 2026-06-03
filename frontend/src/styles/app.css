@@ -280,6 +280,13 @@ select {
   color: var(--illness-deep);
 }
 
+.status-chip.status-parent-day,
+.status-chip.status-parent-day-active {
+  background: rgba(20, 112, 137, 0.14);
+  border-color: rgba(20, 112, 137, 0.42);
+  color: #0b596f;
+}
+
 .status-chip.status-missing-request {
   background: rgba(245, 164, 22, 0.28);
   border-color: rgba(245, 164, 22, 0.74);
@@ -794,6 +801,13 @@ button:disabled {
 .vacation-bar.status-illness-active {
   background: linear-gradient(100deg, rgba(172, 58, 74, 0.9), rgba(143, 34, 56, 0.98));
   border-color: rgba(112, 22, 43, 0.95);
+  color: #fff;
+}
+
+.vacation-bar.status-parent-day,
+.vacation-bar.status-parent-day-active {
+  background: linear-gradient(100deg, rgba(20, 112, 137, 0.9), rgba(9, 84, 105, 0.96));
+  border-color: rgba(9, 84, 105, 0.94);
   color: #fff;
 }
 

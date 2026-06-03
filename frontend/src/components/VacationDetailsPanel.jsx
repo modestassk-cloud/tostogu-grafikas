@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getEntryTypeLabel, isIllnessEntry } from '../entryTypes';
+import { getEntryTypeLabel, isIllnessEntry, isVacationEntry } from '../entryTypes';
 import { formatHumanDate, formatHumanDateTime } from '../utilsDate';
 import { getSignedRequestAlert, getVacationStatusView } from '../vacationStatus';
 
@@ -211,8 +211,13 @@ function VacationDetailsPanel({
     await onSave(updates);
   };
 
+  const selectedStatusView = getVacationStatusView(vacation);
+  const selectedRequestAlert = getSignedRequestAlert(vacation);
+  const isIllness = isIllnessEntry(vacation);
+  const isVacation = isVacationEntry(vacation);
+
   const generateRequestPdf = async () => {
-    if (isIllness) {
+    if (!isVacation) {
       return;
     }
 
@@ -243,9 +248,6 @@ function VacationDetailsPanel({
     }
   };
 
-  const selectedStatusView = getVacationStatusView(vacation);
-  const selectedRequestAlert = getSignedRequestAlert(vacation);
-  const isIllness = isIllnessEntry(vacation);
   const lastSignedRequestLabel = vacation.signedRequestReceived ? 'Gautas' : 'Nenurodytas';
   const lastSignedRequestTimestamp = formatHumanDateTime(
     vacation.signedRequestReceivedAt || vacation.updatedAt,
@@ -305,7 +307,7 @@ function VacationDetailsPanel({
           />
         </label>
 
-        {isManager && !isIllness ? (
+        {isManager && isVacation ? (
           <section className={`signed-request-box ${canEditSignedRequest ? 'editable' : 'readonly'}`}>
             <p className="signed-request-title">Pasirašytas prašymas</p>
             {canEditSignedRequest ? (
@@ -355,7 +357,7 @@ function VacationDetailsPanel({
         ) : null}
       </form>
 
-      {!isIllness ? (
+      {isVacation ? (
         <div className="pdf-action-block">
           <button
             type="button"

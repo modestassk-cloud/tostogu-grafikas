@@ -14,7 +14,7 @@ import GanttChart from '../components/GanttChart';
 import VacationDetailsPanel from '../components/VacationDetailsPanel';
 import VacationFormModal from '../components/VacationFormModal';
 import logo from '../assets/eigida-logo.svg';
-import { ENTRY_TYPES, isIllnessEntry } from '../entryTypes';
+import { ENTRY_TYPES, getEntryTypeLabel, isIllnessEntry } from '../entryTypes';
 import { shiftAnchorDate, shiftIsoDate } from '../utilsDate';
 
 function utcMonthAnchorNow() {
@@ -265,7 +265,7 @@ function VacationDashboard({ isManager }) {
       setShowModal(false);
       if (payload.entryType === ENTRY_TYPES.ILLNESS) {
         flashMessage(`Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
-      } else {
+      } else if (payload.entryType === ENTRY_TYPES.VACATION) {
         const selectedEmployee =
           formEmployees.find((employee) => employee.id === payload.employeeId) || null;
 
@@ -291,6 +291,10 @@ function VacationDashboard({ isManager }) {
             `Atostogų prašymas pateiktas, bet PDF sugeneruoti nepavyko: ${getDepartmentLabel(activeDepartment)} padalinys.`,
           );
         }
+      } else {
+        flashMessage(
+          `${getEntryTypeLabel(payload.entryType)} prašymas pateiktas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
+        );
       }
       await loadDashboardData();
     } catch (submitError) {
@@ -302,7 +306,7 @@ function VacationDashboard({ isManager }) {
 
   const requireSelection = () => {
     if (!selectedVacation) {
-      setError('Pasirinkite atostogų bloką grafike.');
+      setError('Pasirinkite įrašo bloką grafike.');
       return false;
     }
 
@@ -316,7 +320,7 @@ function VacationDashboard({ isManager }) {
       setSavingAction(true);
       setError('');
       await approveVacation({ id: selectedVacation.id, managerToken, department: activeDepartment });
-      flashMessage('Atostogos patvirtintos.');
+      flashMessage(`${getEntryTypeLabel(selectedVacation)} patvirtinta.`);
       await loadDashboardData();
     } catch (actionError) {
       setError(actionError.message);
@@ -333,7 +337,9 @@ function VacationDashboard({ isManager }) {
       setError('');
       await rejectVacation({ id: selectedVacation.id, managerToken, department: activeDepartment });
       flashMessage(
-        isIllnessEntry(selectedVacation) ? 'Ligos įrašas pašalintas.' : 'Atostogų prašymas atmestas.',
+        isIllnessEntry(selectedVacation)
+          ? 'Ligos įrašas pašalintas.'
+          : `${getEntryTypeLabel(selectedVacation)} prašymas atmestas.`,
       );
       await loadDashboardData();
     } catch (actionError) {
@@ -413,7 +419,7 @@ function VacationDashboard({ isManager }) {
         <img src={logo} alt="Eigida" className="logo" />
 
         <div className="sidebar-title-block">
-          <h1>Atostogų ir ligų grafikas</h1>
+          <h1>Atostogų, ligų ir tėvadienių grafikas</h1>
         </div>
 
         <div className="department-switch">
@@ -488,8 +494,8 @@ function VacationDashboard({ isManager }) {
           </label>
         ) : (
           <p className="small-note">
-            Atostogų prašymai pirmiausia rodomi kaip <strong>laukiantys patvirtinimo</strong>, o
-            ligos įrašai grafike atsiranda iš karto.
+            Atostogų ir tėvadienių prašymai pirmiausia rodomi kaip{' '}
+            <strong>laukiantys patvirtinimo</strong>, o ligos įrašai grafike atsiranda iš karto.
           </p>
         )}
 

@@ -11,6 +11,7 @@ const VACATION_STATUSES = Object.freeze({
 const ENTRY_TYPES = Object.freeze({
   VACATION: 'vacation',
   ILLNESS: 'illness',
+  PARENT_DAY: 'parent_day',
 });
 const EMPLOYEE_SOURCES = Object.freeze({
   MANUAL: 'manual',
@@ -45,7 +46,7 @@ db.exec(`
     employee_name TEXT NOT NULL,
     employee_id TEXT,
     department TEXT NOT NULL DEFAULT 'gamyba',
-    entry_type TEXT NOT NULL DEFAULT 'vacation' CHECK(entry_type IN ('vacation', 'illness')),
+    entry_type TEXT NOT NULL DEFAULT 'vacation' CHECK(entry_type IN ('vacation', 'illness', 'parent_day')),
     start_date TEXT NOT NULL,
     end_date TEXT NOT NULL,
     signed_request_received INTEGER NOT NULL DEFAULT 0,
@@ -172,6 +173,83 @@ if (!hasSignedRequestReminderSentAtColumn) {
     ADD COLUMN signed_request_reminder_sent_at TEXT;
   `);
 }
+
+function ensureVacationEntryTypeConstraint() {
+  const row = db
+    .prepare(
+      `
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'vacations'
+    `,
+    )
+    .get();
+
+  if (!row?.sql || row.sql.includes("'parent_day'")) {
+    return;
+  }
+
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    CREATE TABLE vacations_next (
+      id TEXT PRIMARY KEY,
+      employee_name TEXT NOT NULL,
+      employee_id TEXT,
+      department TEXT NOT NULL DEFAULT 'gamyba',
+      entry_type TEXT NOT NULL DEFAULT 'vacation' CHECK(entry_type IN ('vacation', 'illness', 'parent_day')),
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      signed_request_received INTEGER NOT NULL DEFAULT 0,
+      signed_request_received_at TEXT,
+      signed_request_reminder_sent_at TEXT,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    INSERT INTO vacations_next (
+      id,
+      employee_name,
+      employee_id,
+      department,
+      entry_type,
+      start_date,
+      end_date,
+      signed_request_received,
+      signed_request_received_at,
+      signed_request_reminder_sent_at,
+      status,
+      created_at,
+      updated_at
+    )
+    SELECT
+      id,
+      employee_name,
+      employee_id,
+      department,
+      CASE
+        WHEN entry_type IN ('vacation', 'illness', 'parent_day') THEN entry_type
+        ELSE 'vacation'
+      END,
+      start_date,
+      end_date,
+      signed_request_received,
+      signed_request_received_at,
+      signed_request_reminder_sent_at,
+      status,
+      created_at,
+      updated_at
+    FROM vacations;
+
+    DROP TABLE vacations;
+    ALTER TABLE vacations_next RENAME TO vacations;
+
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+ensureVacationEntryTypeConstraint();
 
 db.exec(`
   UPDATE vacations

@@ -173,6 +173,8 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValue
                 ? 'Siunčiama...'
                 : entryType === ENTRY_TYPES.ILLNESS
                   ? 'Išsaugoti ligą'
+                  : entryType === ENTRY_TYPES.PARENT_DAY
+                    ? 'Pateikti tėvadienį'
                   : 'Pateikti prašymą'}
             </button>
           </footer>

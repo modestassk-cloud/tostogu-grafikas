@@ -1,4 +1,4 @@
-import { isIllnessEntry } from './entryTypes';
+import { isIllnessEntry, isParentDayEntry, isVacationEntry } from './entryTypes';
 
 const DEFAULT_STATUS_LABEL = {
   pending: 'Laukia patvirtinimo',
@@ -29,7 +29,7 @@ function differenceInCalendarDays(fromIso, toIso) {
 }
 
 function needsSignedRequest(vacation) {
-  if (isIllnessEntry(vacation)) {
+  if (!isVacationEntry(vacation)) {
     return false;
   }
 
@@ -69,7 +69,20 @@ function isMissingRequestSoon(vacation) {
 }
 
 function isOnLeaveToday(vacation) {
-  if (!vacation || vacation.status !== 'approved' || !hasSignedRequest(vacation)) {
+  if (
+    !isVacationEntry(vacation) ||
+    vacation.status !== 'approved' ||
+    !hasSignedRequest(vacation)
+  ) {
+    return false;
+  }
+
+  const todayIso = getTodayIsoLocal();
+  return vacation.startDate <= todayIso && vacation.endDate >= todayIso;
+}
+
+function isParentDayToday(vacation) {
+  if (!isParentDayEntry(vacation) || vacation.status !== 'approved') {
     return false;
   }
 
@@ -102,6 +115,19 @@ export function getVacationStatusView(vacation) {
     return isIllToday(vacation)
       ? { key: 'illness-active', label: 'Serga' }
       : { key: 'illness', label: 'Liga' };
+  }
+
+  if (isParentDayEntry(vacation)) {
+    if (vacation.status === 'pending' || vacation.status === 'rejected') {
+      return {
+        key: vacation.status,
+        label: DEFAULT_STATUS_LABEL[vacation.status] || vacation.status,
+      };
+    }
+
+    return isParentDayToday(vacation)
+      ? { key: 'parent-day-active', label: 'Tėvadienis šiandien' }
+      : { key: 'parent-day', label: 'Tėvadienis' };
   }
 
   if (isBlockedByMissingRequest(vacation)) {

@@ -198,7 +198,9 @@ function EmployeeCenterModal({
         <section className="employee-section">
           <header className="employee-section-header">
             <h4>Darbuotojų kortelės</h4>
-            <p className="panel-note">Tik šis sąrašas rodomas atostogų ir ligų formoje.</p>
+            <p className="panel-note">
+              Tik šis sąrašas rodomas atostogų, tėvadienių ir ligų formoje.
+            </p>
           </header>
           <div className="employee-card-grid">
             {cardEmployees.length ? (
