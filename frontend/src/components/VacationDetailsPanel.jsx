@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getEntryTypeLabel, isIllnessEntry, isVacationEntry } from '../entryTypes';
+import {
+  getEntryTypeLabel,
+  isIllnessEntry,
+  isParentDayEntry,
+  isVacationEntry,
+} from '../entryTypes';
 import { formatHumanDate, formatHumanDateTime } from '../utilsDate';
 import { getSignedRequestAlert, getVacationStatusView } from '../vacationStatus';
 
@@ -215,9 +220,10 @@ function VacationDetailsPanel({
   const selectedRequestAlert = getSignedRequestAlert(vacation);
   const isIllness = isIllnessEntry(vacation);
   const isVacation = isVacationEntry(vacation);
+  const hasRequestPdf = isVacation || isParentDayEntry(vacation);
 
   const generateRequestPdf = async () => {
-    if (!isVacation) {
+    if (!hasRequestPdf) {
       return;
     }
 
@@ -232,6 +238,7 @@ function VacationDetailsPanel({
       setError('');
       const { generateVacationRequestPdf } = await import('../vacationRequestPdf');
       await generateVacationRequestPdf({
+        entryType: vacation.entryType,
         employeeName: employeeForPdf.fullName || vacation.employeeName,
         employeePosition:
           employeeForPdf.position || employeeForPdf.jobTitle || employeeForPdf.role || '',
@@ -241,7 +248,7 @@ function VacationDetailsPanel({
       });
       setPdfMessage('Prašymo PDF parsiųstas.');
     } catch (pdfError) {
-      console.error('Nepavyko sugeneruoti atostogų prašymo PDF:', pdfError);
+      console.error('Nepavyko sugeneruoti prašymo PDF:', pdfError);
       setError('Nepavyko sugeneruoti prašymo PDF.');
     } finally {
       setGeneratingPdf(false);
@@ -357,7 +364,7 @@ function VacationDetailsPanel({
         ) : null}
       </form>
 
-      {isVacation ? (
+      {hasRequestPdf ? (
         <div className="pdf-action-block">
           <button
             type="button"

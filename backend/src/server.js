@@ -338,6 +338,16 @@ function getEntryTypeLabel(entryType) {
   return 'Atostogos';
 }
 
+function getEntryTypeRequestLabel(entryType) {
+  if (entryType === ENTRY_TYPES.ILLNESS) {
+    return 'ligos';
+  }
+  if (entryType === ENTRY_TYPES.PARENT_DAY) {
+    return 'tėvadienio';
+  }
+  return 'atostogų';
+}
+
 async function resolveEmployeeSelectionOrSendError(
   res,
   { department, employeeId, employeeName, allowInactive = false },
@@ -404,7 +414,7 @@ async function notifyAboutNewVacationRequest(vacation) {
   });
   const entryTypeLabel = getEntryTypeLabel(vacation.entryType);
 
-  const subject = `Naujas ${entryTypeLabel.toLowerCase()} prašymas: ${vacation.employeeName}`;
+  const subject = `Naujas ${getEntryTypeRequestLabel(vacation.entryType)} prašymas: ${vacation.employeeName}`;
   const text = [
     'Sveiki,',
     '',

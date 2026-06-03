@@ -14,7 +14,12 @@ import GanttChart from '../components/GanttChart';
 import VacationDetailsPanel from '../components/VacationDetailsPanel';
 import VacationFormModal from '../components/VacationFormModal';
 import logo from '../assets/eigida-logo.svg';
-import { ENTRY_TYPES, getEntryTypeLabel, isIllnessEntry } from '../entryTypes';
+import {
+  ENTRY_TYPES,
+  getEntryTypeLabel,
+  getEntryTypeRequestLabel,
+  isIllnessEntry,
+} from '../entryTypes';
 import { shiftAnchorDate, shiftIsoDate } from '../utilsDate';
 
 function utcMonthAnchorNow() {
@@ -265,13 +270,15 @@ function VacationDashboard({ isManager }) {
       setShowModal(false);
       if (payload.entryType === ENTRY_TYPES.ILLNESS) {
         flashMessage(`Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
-      } else if (payload.entryType === ENTRY_TYPES.VACATION) {
+      } else {
         const selectedEmployee =
           formEmployees.find((employee) => employee.id === payload.employeeId) || null;
+        const entryTypeRequestLabel = getEntryTypeRequestLabel(payload.entryType);
 
         try {
           const { generateVacationRequestPdf } = await import('../vacationRequestPdf');
           await generateVacationRequestPdf({
+            entryType: payload.entryType,
             employeeName: selectedEmployee?.fullName || payload.employeeName,
             employeePosition:
               selectedEmployee?.position ||
@@ -283,18 +290,14 @@ function VacationDashboard({ isManager }) {
             submittedAt: createdVacation?.createdAt || new Date(),
           });
           flashMessage(
-            `Atostogų prašymas pateiktas ir PDF parsiųstas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
+            `${entryTypeRequestLabel} prašymas pateiktas ir PDF parsiųstas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
           );
         } catch (pdfError) {
-          console.error('Nepavyko sugeneruoti atostogų prašymo PDF:', pdfError);
+          console.error('Nepavyko sugeneruoti prašymo PDF:', pdfError);
           flashMessage(
-            `Atostogų prašymas pateiktas, bet PDF sugeneruoti nepavyko: ${getDepartmentLabel(activeDepartment)} padalinys.`,
+            `${entryTypeRequestLabel} prašymas pateiktas, bet PDF sugeneruoti nepavyko: ${getDepartmentLabel(activeDepartment)} padalinys.`,
           );
         }
-      } else {
-        flashMessage(
-          `${getEntryTypeLabel(payload.entryType)} prašymas pateiktas: ${getDepartmentLabel(activeDepartment)} padalinys.`,
-        );
       }
       await loadDashboardData();
     } catch (submitError) {

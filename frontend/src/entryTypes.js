@@ -28,3 +28,16 @@ export function getEntryTypeLabel(entryOrType) {
     ENTRY_TYPE_OPTIONS.find((option) => option.value === value)?.label || ENTRY_TYPE_OPTIONS[0].label
   );
 }
+
+export function getEntryTypeRequestLabel(entryOrType) {
+  const value = typeof entryOrType === 'string' ? entryOrType : entryOrType?.entryType;
+
+  if (value === ENTRY_TYPES.PARENT_DAY) {
+    return 'Tėvadienio';
+  }
+  if (value === ENTRY_TYPES.ILLNESS) {
+    return 'Ligos';
+  }
+
+  return 'Atostogų';
+}

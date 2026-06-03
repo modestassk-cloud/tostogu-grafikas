@@ -8,8 +8,19 @@ const PDF_PAGE_HEIGHT_PX = 1123;
 const DIRECTOR_NAME = 'Modestas Skierus';
 const DIRECTOR_ROLE = 'Direktorius';
 const REQUEST_CITY = 'Kaunas';
-const VACATION_REQUEST_FILE_PREFIX = 'Atostogu-prasymas';
 const PDF_WRAPPER_ID = 'vacation-request-pdf-root';
+const REQUEST_CONFIG = Object.freeze({
+  vacation: {
+    title: 'PRAŠYMAS DĖL ATOSTOGŲ',
+    bodyText: 'Prašau suteikti man kasmetines atostogas šiuo laikotarpiu:',
+    filePrefix: 'Atostogu-prasymas',
+  },
+  parent_day: {
+    title: 'PRAŠYMAS DĖL TĖVADIENIO',
+    bodyText: 'Prašau suteikti man tėvadienį šiuo laikotarpiu:',
+    filePrefix: 'Tevadienio-prasymas',
+  },
+});
 
 function escapeHtml(value) {
   return String(value || '')
@@ -64,6 +75,7 @@ function sanitizeFileNamePart(value) {
 function buildRequestMarkup({
   employeeName,
   employeePosition,
+  requestConfig,
   requestDate,
   startDate,
   endDate,
@@ -101,7 +113,7 @@ function buildRequestMarkup({
 
       <div style="text-align:center; margin-bottom:34px;">
         <div style="font-size:20px; font-weight:700; letter-spacing:0;">
-          PRAŠYMAS DĖL ATOSTOGŲ
+          ${escapeHtml(requestConfig.title)}
         </div>
       </div>
 
@@ -117,7 +129,7 @@ function buildRequestMarkup({
       <div style="font-size:16px; line-height:1.65;">
         <div><strong>Vardas, pavardė:</strong> ${escapeHtml(employeeName)}</div>
         <div><strong>Pareigos:</strong> ${positionMarkup}</div>
-        <div style="margin-top:22px;">Prašau suteikti man kasmetines atostogas šiuo laikotarpiu:</div>
+        <div style="margin-top:22px;">${escapeHtml(requestConfig.bodyText)}</div>
         <div style="margin-top:12px;">
           <strong>Nuo:</strong> ${escapeHtml(startDate)}
           <span style="display:inline-block; width:34px;"></span>
@@ -190,17 +202,20 @@ async function waitForAssets(root) {
 }
 
 export async function generateVacationRequestPdf({
+  entryType = 'vacation',
   employeeName,
   employeePosition,
   startDate,
   endDate,
   submittedAt,
 }) {
+  const requestConfig = REQUEST_CONFIG[entryType] || REQUEST_CONFIG.vacation;
   const requestDate = formatLocalIsoDate(submittedAt);
   const workingDays = countWorkingDays(startDate, endDate);
   const markup = buildRequestMarkup({
     employeeName,
     employeePosition,
+    requestConfig,
     requestDate,
     startDate,
     endDate,
@@ -228,7 +243,7 @@ export async function generateVacationRequestPdf({
     pdf.addImage(imageData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
 
     const employeePart = sanitizeFileNamePart(employeeName) || 'darbuotojas';
-    pdf.save(`${VACATION_REQUEST_FILE_PREFIX}-${employeePart}-${startDate}-${endDate}.pdf`);
+    pdf.save(`${requestConfig.filePrefix}-${employeePart}-${startDate}-${endDate}.pdf`);
   } finally {
     wrapper.remove();
   }
