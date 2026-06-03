@@ -1,10 +1,10 @@
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import requestHeaderImage from './assets/vacation-request-header.png';
+import eigidaLogo from './assets/eigida-logo.svg';
 import { addDays, isLithuanianHoliday, isWeekendDate, parseIsoDate } from './utilsDate';
 
 const PDF_PAGE_WIDTH_PX = 794;
-const PDF_PAGE_MIN_HEIGHT_PX = 1123;
+const PDF_PAGE_HEIGHT_PX = 1123;
 const DIRECTOR_NAME = 'Modestas Skierus';
 const DIRECTOR_ROLE = 'Direktorius';
 const REQUEST_CITY = 'Kaunas';
@@ -69,75 +69,78 @@ function buildRequestMarkup({
   endDate,
   workingDays,
 }) {
-  const safePosition = employeePosition
-    ? escapeHtml(employeePosition)
-    : '______________________________';
+  const safePosition = escapeHtml(employeePosition);
+  const positionMarkup = safePosition
+    ? `<span>${safePosition}</span>`
+    : '<span style="display:inline-block; width:310px; border-bottom:1px solid #4b5651; transform:translateY(-2px);"></span>';
 
   return `
     <div
       style="
         width: ${PDF_PAGE_WIDTH_PX}px;
-        min-height: ${PDF_PAGE_MIN_HEIGHT_PX}px;
+        height: ${PDF_PAGE_HEIGHT_PX}px;
         box-sizing: border-box;
-        padding: 56px 76px 88px;
+        padding: 54px 76px 72px;
         background: #ffffff;
-        color: #1e2823;
+        color: #202a25;
         font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+        position: relative;
       "
     >
       <img
-        src="${requestHeaderImage}"
+        src="${eigidaLogo}"
         alt="Eigida"
-        style="display:block; width:216px; height:auto; margin:0 0 22px 0;"
+        style="display:block; width:170px; height:auto; margin:0 0 42px 0;"
       />
 
-      <div style="font-size:18px; line-height:1.45; margin-bottom:44px;">
+      <div style="font-size:16px; line-height:1.35; margin-bottom:46px;">
         <div>UAB EIGIDA</div>
         <div>Direktoriui</div>
         <div>${escapeHtml(DIRECTOR_NAME)}</div>
       </div>
 
-      <div style="text-align:center; margin-bottom:28px;">
-        <div style="font-size:24px; font-weight:700; letter-spacing:0.2px;">
+      <div style="text-align:center; margin-bottom:34px;">
+        <div style="font-size:20px; font-weight:700; letter-spacing:0;">
           PRAŠYMAS DĖL ATOSTOGŲ
         </div>
       </div>
 
-      <div style="font-size:18px; margin-bottom:18px;">${REQUEST_CITY}</div>
+      <div style="font-size:16px; margin-bottom:18px;">${REQUEST_CITY}</div>
 
-      <div style="width:164px; text-align:center; margin-bottom:40px;">
-        <div style="font-size:18px;">${requestDate}</div>
-        <div style="border-top:1px solid #6c6c6c; margin-top:6px; padding-top:4px; font-size:12px;">
+      <div style="width:168px; text-align:center; margin:0 0 44px 0;">
+        <div style="font-size:16px;">${requestDate}</div>
+        <div style="border-top:1px solid #6c6c6c; margin-top:5px; padding-top:3px; font-size:12px;">
           Data
         </div>
       </div>
 
-      <div style="font-size:18px; line-height:1.8;">
+      <div style="font-size:16px; line-height:1.65;">
         <div><strong>Vardas, pavardė:</strong> ${escapeHtml(employeeName)}</div>
-        <div><strong>Pareigos:</strong> ${safePosition}</div>
-        <div style="margin-top:18px;">Prašau suteikti man kasmetines atostogas šiuo laikotarpiu:</div>
-        <div style="margin-top:10px;">
+        <div><strong>Pareigos:</strong> ${positionMarkup}</div>
+        <div style="margin-top:22px;">Prašau suteikti man kasmetines atostogas šiuo laikotarpiu:</div>
+        <div style="margin-top:12px;">
           <strong>Nuo:</strong> ${escapeHtml(startDate)}
-          <span style="display:inline-block; width:14px;"></span>
+          <span style="display:inline-block; width:34px;"></span>
           <strong>iki:</strong> ${escapeHtml(endDate)} (imtinai)
         </div>
-        <div style="margin-top:10px;">
+        <div style="margin-top:12px;">
           <strong>Iš viso darbo dienų:</strong> ${workingDays}
         </div>
       </div>
 
-      <div style="font-size:18px; margin-top:48px;">
-        Darbuotojo parašas: _______________________
+      <div style="font-size:16px; margin-top:54px;">
+        Darbuotojo parašas:
+        <span style="display:inline-block; width:255px; border-bottom:1px solid #4b5651; transform:translateY(-2px);"></span>
       </div>
 
-      <div style="margin-top:170px; font-size:18px; line-height:1.7;">
+      <div style="position:absolute; left:76px; right:76px; bottom:72px; font-size:16px; line-height:1.55;">
         <div>
           Tvirtinu: ${DIRECTOR_ROLE} ${escapeHtml(DIRECTOR_NAME)}
-          <span style="display:inline-block; width:18px;"></span>
+          <span style="display:inline-block; width:42px;"></span>
           ${requestDate}
         </div>
-        <div style="margin-top:22px;">_____________________________________________________</div>
-        <div style="margin-top:8px; font-size:14px;">
+        <div style="margin-top:26px; border-bottom:1px solid #4b5651; width:100%;"></div>
+        <div style="margin-top:7px; font-size:13px;">
           Vadovo vardas, pavardė, pareigos, data, parašas.
         </div>
       </div>
@@ -159,7 +162,6 @@ function createRenderContainer(markup) {
   wrapper.style.top = '0';
   wrapper.style.zIndex = '-1';
   wrapper.style.pointerEvents = 'none';
-  wrapper.style.opacity = '0';
   wrapper.innerHTML = markup;
   document.body.appendChild(wrapper);
   return wrapper;

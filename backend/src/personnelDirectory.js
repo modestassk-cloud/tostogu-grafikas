@@ -153,6 +153,8 @@ function mapEmployee(rawEmployee) {
     firstName,
     lastName,
     fullName,
+    position:
+      normalizeText(rawEmployee?.position || rawEmployee?.job_title || rawEmployee?.jobTitle) || null,
     department: mapVacationDepartment(rawEmployee),
     rawDepartment: normalizeText(rawEmployee?.department) || null,
     departmentCode: normalizeText(rawEmployee?.department_code) || null,
