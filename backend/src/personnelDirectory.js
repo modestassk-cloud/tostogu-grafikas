@@ -63,6 +63,11 @@ function resolveCacheTtlMs() {
 }
 
 function mapVacationDepartment(rawEmployee) {
+  const positionCandidate = normalizeDepartmentCandidate(rawEmployee?.position);
+  if (positionCandidate.includes('gamyb') && positionCandidate.includes('vadov')) {
+    return DEPARTMENTS.ADMINISTRATION;
+  }
+
   const exactCandidates = [
     rawEmployee?.vacation_department,
     rawEmployee?.department_code,
