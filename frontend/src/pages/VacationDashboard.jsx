@@ -268,6 +268,12 @@ function VacationDashboard({ isManager }) {
         department: activeDepartment,
       });
       setShowModal(false);
+      if (createdVacation?.duplicate) {
+        flashMessage('Toks įrašas jau yra, todėl naujas įrašas ir papildomas laiškas nesukurti.');
+        await loadDashboardData();
+        return;
+      }
+
       if (payload.entryType === ENTRY_TYPES.ILLNESS) {
         flashMessage(`Ligos įrašas pridėtas: ${getDepartmentLabel(activeDepartment)} padalinys.`);
       } else {

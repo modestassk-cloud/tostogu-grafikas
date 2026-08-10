@@ -16,6 +16,7 @@ const {
   getOrCreateManagerTokens,
   listVacations,
   createVacation,
+  findActiveVacationByRequest,
   getVacationById,
   updateVacation,
 } = require('./db');
@@ -623,6 +624,19 @@ app.post('/api/vacations', async (req, res) => {
   });
   if (!employee) {
     return;
+  }
+
+  const existingVacation = findActiveVacationByRequest({
+    employeeId: employee.id,
+    employeeName: employee.fullName,
+    department,
+    entryType,
+    startDate,
+    endDate,
+  });
+  if (existingVacation) {
+    console.log(`Dubliuotas prašymas nebekuriamas: ${existingVacation.id}`);
+    return res.status(200).json({ vacation: existingVacation, duplicate: true });
   }
 
   const created = createVacation({

@@ -43,10 +43,12 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValue
   const [endDate, setEndDate] = useState(today);
   const [error, setError] = useState('');
   const initializedRef = useRef(false);
+  const submitInProgressRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
       initializedRef.current = false;
+      submitInProgressRef.current = false;
       setError('');
       return;
     }
@@ -70,6 +72,9 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValue
 
   const submit = async (event) => {
     event.preventDefault();
+    if (submitting || submitInProgressRef.current) {
+      return;
+    }
 
     if (!employees.length) {
       setError('Šiame padalinyje dar nėra darbuotojų sąrašo.');
@@ -88,13 +93,18 @@ function VacationFormModal({ isOpen, onClose, onSubmit, submitting, initialValue
     }
 
     setError('');
-    await onSubmit({
-      entryType,
-      employeeId: selectedEmployee.id,
-      employeeName: selectedEmployee.fullName,
-      startDate,
-      endDate,
-    });
+    submitInProgressRef.current = true;
+    try {
+      await onSubmit({
+        entryType,
+        employeeId: selectedEmployee.id,
+        employeeName: selectedEmployee.fullName,
+        startDate,
+        endDate,
+      });
+    } finally {
+      submitInProgressRef.current = false;
+    }
   };
 
   return (

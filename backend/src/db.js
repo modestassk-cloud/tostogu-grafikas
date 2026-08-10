@@ -609,6 +609,64 @@ function getVacationById(id) {
   return rowToVacation(row);
 }
 
+function findActiveVacationByRequest({
+  employeeId = null,
+  employeeName,
+  department,
+  entryType,
+  startDate,
+  endDate,
+}) {
+  const normalizedEmployeeId = String(employeeId || '').trim();
+  const normalizedEmployeeName = normalizeEmployeeLookupKey(employeeName);
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        vacations.id,
+        vacations.employee_id,
+        vacations.employee_name,
+        employees.full_name AS employee_full_name,
+        vacations.department,
+        vacations.entry_type,
+        vacations.start_date,
+        vacations.end_date,
+        vacations.signed_request_received,
+        vacations.signed_request_received_at,
+        vacations.signed_request_reminder_sent_at,
+        vacations.status,
+        vacations.created_at,
+        vacations.updated_at
+      FROM vacations
+      LEFT JOIN employees
+        ON employees.id = vacations.employee_id
+      WHERE vacations.department = ?
+        AND vacations.entry_type = ?
+        AND vacations.start_date = ?
+        AND vacations.end_date = ?
+        AND vacations.status != ?
+        AND (
+          (TRIM(COALESCE(vacations.employee_id, '')) != '' AND vacations.employee_id = ?)
+          OR LOWER(TRIM(vacations.employee_name)) = ?
+        )
+      ORDER BY vacations.created_at ASC
+      LIMIT 1
+    `,
+    )
+    .get(
+      toDepartmentOrDefault(department),
+      toEntryTypeOrDefault(entryType),
+      startDate,
+      endDate,
+      VACATION_STATUSES.REJECTED,
+      normalizedEmployeeId,
+      normalizedEmployeeName,
+    );
+
+  return rowToVacation(row);
+}
+
 function createVacation({ employeeId = null, employeeName, department, entryType, startDate, endDate }) {
   const id = generateId();
   const createdAt = nowIso();
@@ -962,6 +1020,7 @@ module.exports = {
   getOrCreateManagerTokens,
   listVacations,
   createVacation,
+  findActiveVacationByRequest,
   getVacationById,
   updateVacation,
   syncVacationEmployeeLink,

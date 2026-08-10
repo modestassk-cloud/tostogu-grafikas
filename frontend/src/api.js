@@ -62,7 +62,10 @@ export async function createVacationRequest(data) {
     body: data,
   });
 
-  return payload.vacation;
+  return {
+    ...(payload.vacation || {}),
+    duplicate: Boolean(payload.duplicate),
+  };
 }
 
 export async function validateManagerSession({ managerToken, department }) {
