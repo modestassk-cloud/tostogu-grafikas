@@ -77,6 +77,7 @@ function buildRequestMarkup({
   employeePosition,
   requestConfig,
   requestDate,
+  approvalDate,
   startDate,
   endDate,
   workingDays,
@@ -149,7 +150,7 @@ function buildRequestMarkup({
         <div>
           Tvirtinu: ${DIRECTOR_ROLE} ${escapeHtml(DIRECTOR_NAME)}
           <span style="display:inline-block; width:42px;"></span>
-          ${requestDate}
+          ${approvalDate}
         </div>
         <div style="margin-top:26px; border-bottom:1px solid #4b5651; width:100%;"></div>
         <div style="margin-top:7px; font-size:13px;">
@@ -211,12 +212,14 @@ export async function generateVacationRequestPdf({
 }) {
   const requestConfig = REQUEST_CONFIG[entryType] || REQUEST_CONFIG.vacation;
   const requestDate = formatLocalIsoDate(submittedAt);
+  const approvalDate = formatLocalIsoDate(new Date());
   const workingDays = countWorkingDays(startDate, endDate);
   const markup = buildRequestMarkup({
     employeeName,
     employeePosition,
     requestConfig,
     requestDate,
+    approvalDate,
     startDate,
     endDate,
     workingDays,
